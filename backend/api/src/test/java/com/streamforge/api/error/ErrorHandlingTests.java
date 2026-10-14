@@ -1,9 +1,12 @@
 package com.streamforge.api.error;
 
+import com.streamforge.testing.DatabaseFailureProbeController;
 import com.streamforge.testing.UnexpectedErrorProbeController;
 import com.streamforge.testing.ValidationProbeController;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -19,9 +22,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(
-        controllers = {ValidationProbeController.class, UnexpectedErrorProbeController.class},
+        controllers = {
+                ValidationProbeController.class,
+                UnexpectedErrorProbeController.class,
+                DatabaseFailureProbeController.class
+        },
+        excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class,
         properties = "spring.datasource.password=testcontainers-managed")
-@Import({GlobalExceptionHandler.class, ValidationProbeController.class, UnexpectedErrorProbeController.class})
+@AutoConfigureMockMvc(addFilters = false)
+@Import({
+        GlobalExceptionHandler.class,
+        ValidationProbeController.class,
+        UnexpectedErrorProbeController.class,
+        DatabaseFailureProbeController.class
+})
 class ErrorHandlingTests {
 
     @Autowired
@@ -80,5 +94,20 @@ class ErrorHandlingTests {
                 .andExpect(content().string(not(containsString("super-secret"))))
                 .andExpect(content().string(not(containsString("jdbc:postgresql"))))
                 .andExpect(content().string(not(containsString("IllegalStateException"))));
+    }
+
+    @Test
+    void databaseFailureDoesNotClaimAcceptanceOrExposeSql() throws Exception {
+        mockMvc.perform(get("/internal/database-probe"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                .andExpect(jsonPath("$.title").value("Service Unavailable"))
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.detail").value("The service is temporarily unavailable."))
+                .andExpect(jsonPath("$.acceptance").doesNotExist())
+                .andExpect(content().string(not(containsString("super-secret"))))
+                .andExpect(content().string(not(containsString("jdbc:postgresql"))))
+                .andExpect(content().string(not(containsString("SELECT"))))
+                .andExpect(content().string(not(containsString("ACCEPTED"))));
     }
 }

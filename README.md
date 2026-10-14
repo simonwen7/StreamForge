@@ -2,7 +2,7 @@
 
 StreamForge is a planned cloud-native event processing and analytics platform. Its first MVP domain is IoT telemetry and device monitoring: accepting versioned readings, processing them asynchronously, and exposing useful read models while making reliability behavior observable.
 
-The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M2 adds a Java API foundation, local PostgreSQL, and tests. Telemetry ingestion, Kafka processing, the Worker, and AWS deployment remain unimplemented.
+The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M2 added the Java API foundation. M3 adds device registration, nested telemetry acceptance, and an outbox row. Kafka publication, the Worker, and AWS deployment remain unimplemented.
 
 ## Planned Architecture
 
@@ -21,14 +21,18 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 - Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`
 - JDBC, Flyway, and local PostgreSQL 17.11 through Docker Compose
+- Device registration and nested `telemetry.reading` acceptance
+- Atomic event and outbox insertion, with idempotent retries
+- Two loopback API keys for device administration and ingestion
+- A manual Java CLI simulator in `backend/simulator`. Repeating a seed is successful: HTTP 202 is a new acceptance and HTTP 200 is the same event already accepted
 - Actuator health, request validation, and RFC 9457 error responses
 - JUnit and Testcontainers tests, exercised locally
-- A GitHub Actions workflow that is written and not yet executed remotely
+- A GitHub Actions workflow. The owner reported that the M2 run passed. M3 has not been pushed.
 
 ## Planned for later milestones
 
-- Apache Kafka, the transactional outbox, and the Worker
-- Telemetry ingestion, device APIs, and replay
+- Apache Kafka publication and the Worker
+- Replay and analytics
 - A frontend stack, with Node.js 24 LTS to be evaluated before that work
 - AWS deployment, only after M9 review and explicit approval
 
@@ -36,9 +40,9 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 **M1 completed and accepted on 2026-10-14 with documented deferrals.**
 
-**M2 — Java Backend Foundation is implemented and tested locally. It is pending Final Check / user acceptance. Remote GitHub Actions is not verified.**
+**M2 — Java Backend Foundation was accepted by the owner on 2026-10-14.** Local tests passed. The owner reported that remote GitHub Actions passed. This repository's agent did not independently verify that remote run.
 
-The API module, Maven Wrapper, Flyway foundation schema, loopback-only PostgreSQL Compose file, and Testcontainers tests exist. No telemetry business endpoints, Kafka, Worker, or cloud deployment are implemented. M3 must not start automatically.
+**M3 — Event Sources & Ingestion is implemented and tested locally. It is pending Final Check / user acceptance.** Remote GitHub Actions for M3 is not verified. M4 has not started.
 
 ## Planned Repository Layout
 
@@ -46,7 +50,8 @@ M2 introduced `backend/api` and `infra`. Later directories are created only when
 
 ```text
 backend/
-  api/                 # Spring Boot API process (M2)
+  api/                 # Spring Boot API process
+  simulator/           # Manual HTTP telemetry CLI (M3)
   worker/              # deferred until a later milestone
   shared-contract/     # deferred until a later milestone
 frontend/              # demo and operational UI
@@ -65,6 +70,7 @@ docs/                  # requirements, architecture, decisions, and records
 - [Architecture Decision Records](docs/decisions/ADR-01.md)
 - [M1 Milestone Report](docs/milestones/M1.md)
 - [M2 Milestone Report](docs/milestones/M2.md)
+- [M3 Milestone Report](docs/milestones/M3.md)
 
 ## Local Development
 

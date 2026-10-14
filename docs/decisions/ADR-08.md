@@ -34,6 +34,14 @@ Explicit identity supports safe retries, outbox correlation, Kafka redelivery, a
 
 Canonical equality, UUID constraints, field ranges/precision, optionality, timestamp tolerances, endpoint and response schemas, conflict status, lifecycle representation, Kafka envelope, topic/key, schema enforcement, and compatibility windows remain open until M3.
 
+## Amendment — 2026-10-14, owner-approved for M3
+
+The M1 decision above remains the historical record. During M3 design review the owner approved a nested measurements object and rejected the flat measurement fields shown in the original M1 example.
+
+The implemented V1 request therefore places `temperatureC`, `humidityPct`, and `batteryPct` inside `measurements`. Flat payloads are invalid. `processedAt` is not part of the M3 acceptance response. A new durable acceptance returns HTTP `202`; an identical retry returns HTTP `200` and preserves `receivedAt`; conflicting reuse of an event ID returns HTTP `409`.
+
+The change was made so the wire contract matches the approved M3 implementation rather than leaving two undocumented payload shapes. Canonical equality, storage, and the acceptance response are specified in the event contract.
+
 ## Related Documents
 
 - [Event Contract](../event-contract.md)

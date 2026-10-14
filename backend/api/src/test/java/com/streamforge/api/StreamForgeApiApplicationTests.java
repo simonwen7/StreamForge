@@ -85,6 +85,11 @@ class StreamForgeApiApplicationTests {
                 Integer.class);
         assertThat(checksum).isEqualTo(595439424);
 
+        Integer versionTwo = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '2' AND success = true",
+                Integer.class);
+        assertThat(versionTwo).isEqualTo(1);
+
         String notes = jdbcTemplate.queryForObject(
                 "SELECT notes FROM streamforge.schema_info WHERE id = 1",
                 String.class);
@@ -104,17 +109,20 @@ class StreamForgeApiApplicationTests {
         mockMvc.perform(post("/internal/validation-probe")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"sensor\",\"count\":3}"))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
-                .andExpect(jsonPath("$.title").value("Not Found"))
-                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Unauthorized"))
+                .andExpect(jsonPath("$.status").value(401))
                 .andExpect(jsonPath("$.type").value("about:blank"))
                 .andExpect(content().string(not(containsString("Exception"))))
                 .andExpect(content().string(not(containsString("stackTrace"))));
 
-        mockMvc.perform(get("/internal/error-probe"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.title").value("Not Found"));
+        mockMvc.perform(get("/internal/error-probe")
+                        .header("Authorization", "Bearer test-ingestion-key-0123456789abcdef"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.title").value("Forbidden"))
+                .andExpect(content().string(not(containsString("super-secret"))))
+                .andExpect(content().string(not(containsString("IllegalStateException"))));
     }
 }

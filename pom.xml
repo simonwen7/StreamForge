@@ -20,6 +20,7 @@
 
     <modules>
         <module>backend/api</module>
+        <module>backend/simulator</module>
     </modules>
 
     <properties>

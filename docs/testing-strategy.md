@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-M2 executes local Maven tests for API foundation behavior. The command is:
+M2 and M3 execute local Maven tests. The command is:
 
 ```bash
 ./mvnw -B -ntp verify
@@ -11,18 +11,22 @@ M2 executes local Maven tests for API foundation behavior. The command is:
 Covered now, and executed locally:
 
 - Spring Boot application context startup against a fresh disposable PostgreSQL database via Testcontainers
-- Flyway V1 applied on that fresh database, including the stored checksum
+- Flyway V1 applied on that fresh database, including checksum `595439424`, followed by V2
 - Actuator health without component details
-- MVC slice coverage for validation field names, malformed JSON, and sanitized unexpected errors
-- The full application context returns 404 for test-only probe routes
+- MVC slice coverage for validation field names, malformed JSON, sanitized unexpected errors, and a database failure that does not claim acceptance
+- Device creation, duplicate and invalid IDs, lookup, unknown devices, and bounded listing
+- Nested telemetry validation, canonical hashing, identical and conflicting retries, and parallel requests for one event ID
+- Event plus outbox commit, and rollback when the outbox insert fails
+- API-key 401 and 403 boundaries, and startup rejection of missing or identical keys
+- The simulator's bounded, deterministic HTTP behavior without printing its credential
 
-The MVC slice is the guarantee for validation and malformed JSON, because those probes are not part of the production context. The full context is the guarantee that those probes are not registered and that an unknown route returns a sanitized Problem Detail.
+The MVC slice keeps security filters off so it can reach the test probes. The full application context requires a credential for those paths and does not invoke the probes. Unknown business routes still require authentication.
 
-Not executed in M2:
+Not executed:
 
-- Telemetry ingestion, outbox, Kafka, Worker, replay, E2E product journeys, security-authorization product tests, and performance tests
+- Kafka publication, Worker processing, replay, end-to-end product journeys, and performance tests
 
-Remote GitHub Actions is **NOT VERIFIED** until the user pushes the workflow.
+The owner reported that the M2 GitHub Actions run passed. This agent did not independently verify it. Remote GitHub Actions for M3 is **NOT VERIFIED** until the user pushes this milestone.
 
 ## Testing Principles
 

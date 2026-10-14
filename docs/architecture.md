@@ -2,7 +2,7 @@
 
 ## Scope and Status
 
-This is the target architecture approved for progressive implementation after M1. It describes boundaries and intended behavior, not an existing system.
+This is the target architecture approved for progressive implementation after M1. M3 implements device registration and durable telemetry acceptance, including the outbox insert, on the API. The outbox publisher, Kafka, and Worker in the diagrams below are still target behavior, not running processes.
 
 ## Logical Components and Deployment Units
 
@@ -80,7 +80,7 @@ sequenceDiagram
     W-->>K: Commit/acknowledge offset
 ```
 
-The exact ordering between database commit and Kafka offset acknowledgement, publisher claiming strategy, and retry implementation will be designed and tested in M3–M6.
+M3 implements the acceptance transaction through the HTTP response. Publisher claiming, Kafka acknowledgement, and Worker processing remain later work.
 
 ## Transaction Boundaries
 
@@ -93,7 +93,7 @@ The API will use one PostgreSQL transaction to:
 3. store the accepted event and server-generated `receivedAt`; and
 4. add the corresponding outbox row.
 
-Only after commit may a new event be reported as durably accepted. HTTP `202` means accepted for asynchronous work, not published or processed.
+Only after commit may a new event be reported as durably accepted. HTTP `202` means the event and outbox row committed. It does not mean the event was published or processed. An identical retry returns HTTP `200` and keeps the original `receivedAt`. A different payload for the same event ID returns HTTP `409`. The acceptance transaction uses PostgreSQL's default READ COMMITTED isolation and the event primary key.
 
 ### Publication
 
