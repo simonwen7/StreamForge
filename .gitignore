@@ -1,0 +1,40 @@
+# Operating systems and editors
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Java and Maven
+target/
+.mvn/timing.properties
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+*.ear
+hs_err_pid*
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+
+# Python (deferred, but keep local artifacts out)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and runtime data
+*.log
+logs/
+data/
+tmp/
+
