@@ -18,28 +18,29 @@ This register is intentionally explicit. An item is not resolved merely because 
 | R-12 | SLOs | Medium | Reliability Lead | No availability, latency, throughput, retention, RTO, or RPO targets exist. | Establish measurable workload and reliability targets. | M6–M8 — before performance acceptance |
 | R-13 | Security | Critical | Security Lead | Identity provider, tenant model, roles, credential flow, rate limiting, audit policy, and threat model are open. | Complete security design before exposing any write/control route or public deployment. | M3–M9 — before write/control exposure or public deployment |
 | R-14 | Public demo | High | Product Owner | Read-only data could still expose sensitive device information or enable abuse. | Use synthetic/sanitized data, least privilege, payload limits, and reviewed public routes. | M8 — before public exposure |
-| R-15 | Network | Critical | Platform Lead | Kafka and PostgreSQL could be exposed by incorrect Compose/cloud configuration. | Default to private binding and verify isolation beginning with PostgreSQL configuration in M2, then verify externally before deployment. | M2, M4, and M9 — before database configuration, broker exposure, and deployment approval |
+| R-15 | Network | Critical | Platform Lead | Kafka and PostgreSQL could be exposed by incorrect Compose/cloud configuration. | M2 Compose publishes PostgreSQL as `127.0.0.1:5432` only; local inspect confirmed `HostIp=127.0.0.1`. Re-verify after any Compose change and before Kafka or cloud exposure. | M2, M4, and M9 — before database configuration, broker exposure, and deployment approval |
 | R-16 | Secrets | High | Security Lead | No production secret-management mechanism is selected. | Keep secrets out of Git and choose an approved mechanism before deployment. | M9 — before cloud deployment |
 | R-17 | AWS | High | Cloud Architecture Lead | EC2 plus Docker Compose may have security, resilience, backup, patching, and operational limitations. | Compare alternatives and document cost/resource/security trade-offs; require explicit approval. | M9 — before deployment approval |
 | R-18 | AWS cost | Medium | Cloud Architecture Lead | Instance, storage, transfer, logging, backup, and public endpoint costs are unestimated. | Produce a bounded estimate and shutdown/budget controls before deployment. | M9 — before creating paid resources |
 | R-19 | Resources | High | Performance Lead | Co-locating API, Worker, Kafka, PostgreSQL, and UI may exhaust a small EC2 host. | Measure CPU, memory, disk, and recovery behavior before selecting topology. | M8–M9 — before deployment topology selection |
 | R-20 | Storage | Medium | Data Architecture Lead | PostgreSQL growth and analytical-query impact may become limiting; S3/Parquet is deferred. | Measure workload and reconsider S3/Parquet without presuming migration. | M6 — before any historical-storage architecture change |
-| R-21 | Toolchain | High | Development Environment Owner | Current Java is 17 x86_64; Java 21 ARM64 and Docker are absent. Node 25 is not the intended LTS baseline. | With approval, install Java 21 ARM64 and Docker before M2; evaluate Node 24 LTS before frontend work. | M2 prerequisite — before implementation starts |
+| R-21 | Toolchain | High | Development Environment Owner | Current Java is 17 x86_64; Java 21 ARM64 and Docker are absent. Node 25 is not the intended LTS baseline. | Temurin 21 ARM64 and Docker Desktop are installed for M2. Java 17 x86_64 remains present and must not be selected. Evaluate Node 24 LTS before frontend work. | M2 prerequisite — before implementation starts |
 | R-22 | Observability | Medium | Reliability Lead | Tooling, metrics, alert thresholds, correlation format, and retention are not selected. | Define alongside runtime implementation and failure tests. | M3–M8 — before operational acceptance |
 | R-23 | Operations | High | Operations Lead | Dead-letter, poison-event, incident, data correction, and disaster-recovery procedures are undefined. | Define, authorize, test, and document operational runbooks. | M4–M9 — before replay or public deployment |
 | R-24 | Privacy | High | Security Lead | Data classification and retention/deletion requirements are unknown. | Confirm telemetry sensitivity and legal/product requirements before public use. | M8 — before public exposure |
 | R-25 | Architecture | Medium | Architecture Owner | Outbox publisher initially belongs to the API deployment, but scaling and operational ownership may require refinement. | Evaluate without creating an additional service prematurely. | M3–M6 — before changing deployment-unit boundaries |
-| R-26 | Process | High | Project Supervisor | Milestone status could become inconsistent or work could begin without explicit authorization. | Keep the accepted M1 record consistent across documentation; do not start M2 automatically. | M1 acceptance record and M2 authorization gate — before M2 starts |
-| R-27 | Supply chain | High | Security Lead | Vulnerable third-party dependencies, compromised Maven dependencies or plugins, untrusted container images, dependency version drift, unverifiable artifact provenance or integrity, and CI dependency or secret exposure could compromise builds or runtime artifacts. | Establish pinned and reviewed dependencies and plugins, trusted image sources, checksum/signature or provenance verification where supported, automated dependency and secret scanning, controlled CI credentials, and documented update handling. | M2 and M8 — baseline hygiene before adding dependencies; CI security gates before public deployment |
+| R-26 | Process | High | Project Supervisor | Milestone status could become inconsistent or work could begin without explicit authorization. | M1 is accepted. Keep M2 pending Final Check; do not start M3 automatically. | M1 acceptance record and M2 authorization gate — before M2 starts |
+| R-27 | Supply chain | High | Security Lead | Vulnerable third-party dependencies, compromised Maven dependencies or plugins, untrusted container images, dependency version drift, unverifiable artifact provenance or integrity, and CI dependency or secret exposure could compromise builds or runtime artifacts. | M2 pins Spring Boot 4.1.1 BOM-managed libraries, the Maven Wrapper SHA-256, the official PostgreSQL index digest, the Testcontainers Ryuk 0.14.0 index digest, and GitHub Action commit SHAs. Testcontainers 2.0.5 honors that Ryuk pin and warns that configuration image substitution is deprecated. Maven logs nonfatal HTTP 401 responses while reading prefix metadata for repositories declared by `org.flywaydb:flyway-parent:12.4.0`. No dependency CVE scanner is installed, so vulnerability status is unverified. Continue review before adding dependencies. | M2 and M8 — baseline hygiene before adding dependencies; CI security gates before public deployment |
+| R-28 | Toolchain | Medium | Backend Lead | Spring Boot 4.1, JUnit 6, Flyway 12, and Testcontainers 2 APIs are newer than many examples and may change test or configuration behavior. | Use official Boot 4.1.1 coordinates and Maven Central artifacts; keep tests on real PostgreSQL. Re-check APIs before M3. | M2–M3 — before expanding persistence and Kafka integration |
 
 ## Known Current Limitations
 
-- The repository contains documentation only.
-- No event is accepted, published, processed, stored, queried, or displayed.
-- No build, source module, dependency, migration, container, Compose file, CI workflow, or cloud resource exists.
-- No application or infrastructure tests have run.
-- Environment findings are observations, not a validated development environment.
-- Architecture descriptions include planned behavior that remains subject to milestone-specific design within the accepted ADR boundaries.
+- M2 provides API foundation only; no telemetry events are accepted, published, processed, or displayed.
+- Kafka, Worker, outbox, replay, and frontend remain unimplemented.
+- Remote GitHub Actions has not run until the user pushes the workflow.
+- Local Compose uses placeholder development credentials, not production secrets.
+- Flyway metadata lookup warns on nonfatal HTTP 401 responses from repositories declared by `flyway-parent` 12.4.0. No CVE scan has been run.
+- Architecture descriptions still include planned later-milestone behavior.
 
 ## Review Practice
 
@@ -51,4 +52,5 @@ When an item is resolved, retain its history or supersede it with a decision rec
 - [Architecture](architecture.md)
 - [Event Contract](event-contract.md)
 - [M1 Milestone](milestones/M1.md)
+- [M2 Milestone](milestones/M2.md)
 

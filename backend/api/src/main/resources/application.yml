@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: streamforge-api
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:streamforge}
+    username: ${POSTGRES_USER:streamforge}
+    password: ${POSTGRES_PASSWORD}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: streamforge
+    default-schema: streamforge
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Local development binds to loopback. Container or cloud deployments set SERVER_ADDRESS=0.0.0.0.
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true

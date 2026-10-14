@@ -2,9 +2,27 @@
 
 ## Current Test Status
 
-M1 contains no application code, build, dependencies, database, broker, frontend, or deployment. Consequently, no unit, integration, Kafka, database, end-to-end, security, or performance tests are executable in M1. Documentation structure and references may be checked, but those checks do not validate runtime behavior.
+M2 executes local Maven tests for API foundation behavior. The command is:
 
-Everything below is a future testing requirement unless explicitly reported otherwise in a later milestone.
+```bash
+./mvnw -B -ntp verify
+```
+
+Covered now, and executed locally:
+
+- Spring Boot application context startup against a fresh disposable PostgreSQL database via Testcontainers
+- Flyway V1 applied on that fresh database, including the stored checksum
+- Actuator health without component details
+- MVC slice coverage for validation field names, malformed JSON, and sanitized unexpected errors
+- The full application context returns 404 for test-only probe routes
+
+The MVC slice is the guarantee for validation and malformed JSON, because those probes are not part of the production context. The full context is the guarantee that those probes are not registered and that an unknown route returns a sanitized Problem Detail.
+
+Not executed in M2:
+
+- Telemetry ingestion, outbox, Kafka, Worker, replay, E2E product journeys, security-authorization product tests, and performance tests
+
+Remote GitHub Actions is **NOT VERIFIED** until the user pushes the workflow.
 
 ## Testing Principles
 
@@ -83,9 +101,11 @@ M1 defines no fabricated performance thresholds. Baselines, test hardware, data 
 - Control clocks where time semantics are under test.
 - Preserve failure diagnostics while avoiding credentials and sensitive payloads in logs.
 
-## Planned CI Gates
+## CI Gates
 
-When CI exists, likely gates include formatting, compile, unit tests, focused integration tests, migration validation, static analysis, dependency review, secret scanning, and documentation-link checks. Longer E2E, resilience, and performance suites may run separately. The exact tools and mandatory gates are not approved in M1.
+M2 adds `.github/workflows/backend-ci.yml`, which runs `./mvnw -B -ntp verify` on Java 21 for pushes to `main` and pull requests. That workflow has been written and locally reviewed; a remote GitHub Actions run is **NOT VERIFIED** until the user pushes the code.
+
+Later gates may add formatting, static analysis, dependency review, secret scanning, and documentation-link checks. Longer E2E, resilience, and performance suites may run separately. Those additional tools are not approved in M2.
 
 ## Evidence and Reporting
 
@@ -97,4 +117,5 @@ Every later milestone report should list the exact commands, environment, passin
 - [Architecture](architecture.md)
 - [Event Contract](event-contract.md)
 - [Known Issues and Risks](known-issues.md)
+- [M2 Milestone](milestones/M2.md)
 
