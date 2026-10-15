@@ -36,7 +36,12 @@ streamforge:
   publication:
     enabled: ${OUTBOX_PUBLISHER_ENABLED:false}
     poll-delay-ms: ${OUTBOX_PUBLISHER_POLL_DELAY_MS:1000}
-    batch-size: ${OUTBOX_PUBLISHER_BATCH_SIZE:50}
+    max-per-cycle: ${OUTBOX_PUBLISHER_MAX_PER_CYCLE:20}
+    lease: ${OUTBOX_PUBLISHER_LEASE:30s}
+    retry-base: ${OUTBOX_PUBLISHER_RETRY_BASE:1s}
+    retry-max: ${OUTBOX_PUBLISHER_RETRY_MAX:5m}
+    jitter-fraction: ${OUTBOX_PUBLISHER_JITTER_FRACTION:0.2}
+    attempt-warning-interval: ${OUTBOX_PUBLISHER_ATTEMPT_WARNING_INTERVAL:20}
     topic: ${OUTBOX_TOPIC:telemetry.reading.v1}
     send-timeout: ${OUTBOX_PUBLISHER_SEND_TIMEOUT:10s}
 

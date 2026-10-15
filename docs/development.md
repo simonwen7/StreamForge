@@ -119,6 +119,12 @@ Flyway creates schema `streamforge` from `spring.flyway.schemas` before the scri
 
 `V3__create_processed_events.sql` creates `streamforge.processed_events`. The Worker inserts one row per accepted event after its database transaction commits. The API does not write this table during HTTP acceptance. V3 is additive. On the preserved local database its checksum is `39366715`. Do not repair history or delete the Compose volume to apply it.
 
+## Flyway V4
+
+`V4__outbox_claim_and_retry.sql` adds claim and retry columns to `outbox_events`. It does not rewrite existing statuses. Pending rows stay pending and become eligible for a claim. Published rows stay published. On a disposable database that applied this file, its checksum is `-1580136198`. Do not edit V1, V2, or V3.
+
+A failed outbox row is requeued only with the statement in [M5](milestones/M5.md). Do not run it against the preserved development database unless that event should be published. Leave `OUTBOX_PUBLISHER_ENABLED` false there. The publisher claims one row at a time, up to 20 per cycle, with a 30-second lease.
+
 ## API keys and the simulator
 
 Generate two different local keys and put them only in `infra/.env`:

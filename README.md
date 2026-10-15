@@ -20,21 +20,21 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 ## Implemented now
 
 - Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`, `backend/worker`, and `backend/simulator`
-- JDBC, Flyway V1–V3, and local PostgreSQL 17.11 through Docker Compose
+- JDBC, Flyway V1–V4, and local PostgreSQL 17.11 through Docker Compose
 - Device registration and nested `telemetry.reading` acceptance
 - Atomic event and outbox insertion, with idempotent retries
-- An outbox publisher in the API, off unless `OUTBOX_PUBLISHER_ENABLED=true`
+- An outbox publisher in the API, off unless `OUTBOX_PUBLISHER_ENABLED=true`, claiming one row at a time
 - Apache Kafka 4.2.1, single-node KRaft, loopback host port `127.0.0.1:9094`
 - An independent Worker that writes `streamforge.processed_events` and acknowledges Kafka only after commit
 - Two loopback API keys for device administration and ingestion
 - A manual Java CLI simulator in `backend/simulator`. Repeating a seed is successful: HTTP 202 is a new acceptance and HTTP 200 is the same event already accepted
 - Actuator health, request validation, and RFC 9457 error responses
 - JUnit and Testcontainers tests, including PostgreSQL and Kafka
-- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs. Remote M4 CI is not verified.
+- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs or the remote M4 run. Remote M5 CI is not verified.
 
 ## Planned for later milestones
 
-- Multi-publisher leases, durable retry orchestration, and dead-letter replay
+- Dead-letter replay, analytics, and a longer reliability soak
 - Analytics and historical read models
 - A frontend stack, with Node.js 24 LTS to be evaluated before that work
 - AWS deployment, only after M9 review and explicit approval
@@ -47,7 +47,9 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 **M3 — Event Sources & Ingestion was accepted by the owner.** The local M3 recheck passed. The owner reported that GitHub Actions passed. This agent did not independently verify that remote run.
 
-**M4 — Asynchronous Event Processing is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M4 is not verified.
+**M4 — Asynchronous Event Processing was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
+
+**M5 — Data Correctness & Reliability is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M5 is not verified.
 
 ## Planned Repository Layout
 
@@ -77,6 +79,7 @@ docs/                  # requirements, architecture, decisions, and records
 - [M2 Milestone Report](docs/milestones/M2.md)
 - [M3 Milestone Report](docs/milestones/M3.md)
 - [M4 Milestone Report](docs/milestones/M4.md)
+- [M5 Milestone Report](docs/milestones/M5.md)
 
 ## Local Development
 

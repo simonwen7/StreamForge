@@ -2,6 +2,7 @@ package com.streamforge.worker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +26,15 @@ public class ProcessingService {
         if (!sameReading(stored, reading)) {
             throw new PoisonMessageException("Persisted event does not match the Kafka record.");
         }
-        int inserted = repository.insertReceipt(reading.eventId());
+        int inserted;
+        try {
+            inserted = repository.insertReceipt(reading.eventId());
+        } catch (DataAccessException ex) {
+            boolean receiptExists = repository.receiptExists(reading.eventId());
+            DatabaseFailureClassifier.classify(ex, receiptExists);
+            log.info("Duplicate delivery already had a processing receipt eventId={}", reading.eventId());
+            return;
+        }
         if (inserted == 1) {
             log.info("Recorded processing receipt eventId={}", reading.eventId());
         } else {

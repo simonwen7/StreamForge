@@ -13,11 +13,15 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -28,12 +32,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
         "spring.datasource.password=testcontainers-managed",
@@ -42,6 +53,7 @@ import static org.mockito.Mockito.reset;
         "streamforge.publication.send-timeout=10s"
 })
 @Import(PostgresTestcontainersConfiguration.class)
+@AutoConfigureMockMvc
 class OutboxPublisherTests {
 
     private static final String KAFKA_IMAGE =
@@ -53,8 +65,25 @@ class OutboxPublisherTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    private static final String INGESTION = "test-ingestion-key-0123456789abcdef";
+
+    @Autowired
+    private MockMvc mockMvc;
+
     @Autowired
     private OutboxPublisher publisher;
+
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    private PublicationProperties properties;
+
+    @MockitoSpyBean
+    private ReadingEncoder encoder;
+
+    @Autowired
+    private RetryDelay retryDelay;
 
     @MockitoSpyBean
     private OutboxPublicationRepository repository;
@@ -100,28 +129,84 @@ class OutboxPublisherTests {
         assertThat(record.value()).doesNotContain("api-key");
         assertThat(new String(record.headers().lastHeader("event-id").value(), StandardCharsets.UTF_8))
                 .isEqualTo(eventId.toString());
-        assertThat(status(eventId)).isEqualTo("published");
+        assertThat(outboxStatus(eventId)).isEqualTo("published");
         assertThat(publishedAt(eventId)).isNotNull();
     }
 
     @Test
     void failureAfterBrokerAcknowledgementLeavesTheRowPendingAndRetryCanDuplicate() throws Exception {
         UUID eventId = insertPending("18.0");
-        doThrow(new IllegalStateException("outbox-update-failed")).when(repository).markPublished(any());
+        doThrow(new IllegalStateException("outbox-update-failed")).when(repository).markPublished(any(), any());
         assertThat(publisher.publishPending()).isZero();
-        assertThat(status(eventId)).isEqualTo("pending");
+        assertThat(outboxStatus(eventId)).isEqualTo("pending");
         assertThat(publishedAt(eventId)).isNull();
         assertThat(recordsFor(eventId)).hasSize(1);
 
         reset(repository);
         assertThat(publisher.publishPending()).isEqualTo(1);
-        assertThat(status(eventId)).isEqualTo("published");
+        assertThat(outboxStatus(eventId)).isEqualTo("published");
         assertThat(publishedAt(eventId)).isNotNull();
         assertThat(recordsFor(eventId)).hasSize(2);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM streamforge.outbox_events WHERE event_id = ?::uuid",
                 Integer.class,
                 eventId.toString())).isEqualTo(1);
+    }
+
+    @Test
+    void permanentEncodingFailureKeepsTheEventAndReportsFailed() throws Exception {
+        UUID eventId = insertPending("17.0");
+        doThrow(new PublicationPermanentException("CONTRACT_ENCODING")).when(encoder).record(any(), any());
+        try {
+            assertThat(publisher.publishPending()).isZero();
+            assertThat(outboxStatus(eventId)).isEqualTo("failed");
+            assertThat(publishedAt(eventId)).isNull();
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT attempt_count FROM streamforge.outbox_events WHERE event_id = ?::uuid",
+                    Integer.class,
+                    eventId.toString())).isZero();
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT claim_token FROM streamforge.outbox_events WHERE event_id = ?::uuid",
+                    Object.class,
+                    eventId.toString())).isNull();
+            mockMvc.perform(get("/api/v1/telemetry/readings/" + eventId)
+                            .header("Authorization", "Bearer " + INGESTION))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.publication").value("FAILED"))
+                    .andExpect(jsonPath("$.acceptance").value("ACCEPTED"));
+        } finally {
+            reset(encoder);
+        }
+    }
+
+    @Test
+    void twoPublisherInstancesClaimOneRowOnce() throws Exception {
+        UUID eventId = insertPending("16.0");
+        OutboxPublisher second = new OutboxPublisher(repository, kafkaTemplate, properties, encoder, retryDelay);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = pool.submit(() -> publishAfter(barrier, publisher));
+            Future<Integer> other = pool.submit(() -> publishAfter(barrier, second));
+            assertThat(first.get(30, TimeUnit.SECONDS) + other.get(30, TimeUnit.SECONDS)).isEqualTo(1);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(outboxStatus(eventId)).isEqualTo("published");
+        assertThat(recordsFor(eventId)).hasSize(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT attempt_count FROM streamforge.outbox_events WHERE event_id = ?::uuid",
+                Integer.class,
+                eventId.toString())).isEqualTo(1);
+    }
+
+    private static int publishAfter(CyclicBarrier barrier, OutboxPublisher publisher) {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+            return publisher.publishPending();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private UUID insertPending(String temperature) {
@@ -141,7 +226,7 @@ class OutboxPublisherTests {
         return eventId;
     }
 
-    private String status(UUID eventId) {
+    private String outboxStatus(UUID eventId) {
         return jdbcTemplate.queryForObject(
                 "SELECT status FROM streamforge.outbox_events WHERE event_id = ?::uuid",
                 String.class,

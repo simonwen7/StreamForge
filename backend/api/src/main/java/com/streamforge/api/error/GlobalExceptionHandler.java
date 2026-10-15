@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import tools.jackson.core.exc.StreamReadException;
+
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +34,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
-        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Malformed Request", "Request body is malformed or unreadable.");
+        String detail = duplicateKey(ex)
+                ? "Request body contains a duplicate JSON key."
+                : "Request body is malformed or unreadable.";
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Malformed Request", detail);
         return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
     }
 
@@ -103,6 +108,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 HttpStatus.valueOf(statusCode.value()).getReasonPhrase(),
                 "The request could not be completed.");
         return super.handleExceptionInternal(ex, safeBody, headers, statusCode, request);
+    }
+
+    private static boolean duplicateKey(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof StreamReadException && current.getMessage() != null
+                    && (current.getMessage().startsWith("Duplicate field")
+                    || current.getMessage().startsWith("Duplicate Object property"))) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private Map<String, String> safeFieldError(FieldError error) {

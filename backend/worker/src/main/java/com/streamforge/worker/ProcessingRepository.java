@@ -32,6 +32,16 @@ public class ProcessingRepository {
                 .optional();
     }
 
+    public boolean receiptExists(UUID eventId) {
+        Integer count = jdbcClient.sql("""
+                        SELECT COUNT(*) FROM streamforge.processed_events WHERE event_id = :eventId
+                        """)
+                .param("eventId", eventId)
+                .query(Integer.class)
+                .single();
+        return count != null && count > 0;
+    }
+
     public int insertReceipt(UUID eventId) {
         return jdbcClient.sql("""
                         INSERT INTO streamforge.processed_events (event_id)

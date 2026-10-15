@@ -97,7 +97,7 @@ Only after commit may a new event be reported as durably accepted. HTTP `202` me
 
 ### Publication
 
-The outbox publisher reads only committed rows. Publishing to Kafka and marking a row published cannot be one atomic transaction with standard PostgreSQL and Kafka operations. Publication is therefore retried and may produce duplicates. Correctness relies on a stable event ID and idempotent consumers, not on an exactly-once claim.
+The outbox publisher claims one committed pending row at a time. Publishing to Kafka and marking a row published cannot be one atomic transaction with standard PostgreSQL and Kafka operations. Publication is therefore retried and may produce duplicates. Correctness relies on a stable event ID and idempotent consumers, not on an exactly-once claim.
 
 ### Processing Transaction
 
@@ -112,12 +112,13 @@ The outbox prevents the API from having to atomically commit to PostgreSQL and K
 - If the acceptance transaction rolls back, neither accepted event nor outbox row exists.
 - If Kafka is unavailable after acceptance, the committed outbox row remains retryable.
 - If publication succeeds but recording publication fails, the publisher may send the same event again.
-- If the publisher crashes after reading a row and before Kafka accepts it, the row stays `pending` and the next poll retries it. M4 does not take a lease.
-- If the publisher crashes after Kafka accepts the record and before the published update, the next poll sends the record again.
-- A permanently unpublishable row stays `pending` and is retried. M4 does not mark it `failed`. Operator retry policy is M5.
-- Two enabled publishers can both send the same row. M4 runs one publisher. M5 is responsible for leases.
+- If the publisher crashes after claiming a row and before Kafka accepts it, the lease expires and another publisher can reclaim the row.
+- If the publisher crashes after Kafka accepts the record and before the fenced published update, the next owner can send the record again.
+- Transient publication failures stay `pending` and become due at `next_attempt_at`. They are not marked `failed` because a retry count was reached.
+- A non-retryable encoding defect can be marked `failed`. The telemetry and outbox rows remain. Requeue is an operator SQL statement, not an HTTP route.
+- Two enabled publishers claim different eligible rows. A stale claim token cannot update a newer claim. An expired lease can still overlap a send already in flight.
 
-The publisher polls about once a second, 50 rows at a time, oldest first. It uses producer `acks=all` and updates `published_at` only after the broker acknowledges. Kafka producer idempotence does not remove duplicates across a process restart.
+The publisher polls about once a second. Each cycle claims one row, finishes that attempt, and then claims the next, up to 20 rows. It uses producer `acks=all` and updates `published_at` only after the broker acknowledges and the claim token still matches. Kafka producer idempotence does not remove duplicates across a process restart.
 
 ## Failure Scenarios
 
@@ -153,13 +154,13 @@ Local Kafka is Apache Kafka 4.2.1 in single-node KRaft mode. Replication factor 
 
 ## Observability
 
-M4 logs outbox polling, publication success and failure, Worker consumption, receipt creation, duplicate delivery, and dead-letter handling. Those logs include the event ID and topic. They do not include API keys or database passwords. Counters, lag dashboards, and alert thresholds are not part of M4.
+The publisher logs claims, publication, retry, and permanent failure with the event ID and a short error code. About once a minute it logs pending, eligible, claim, and failed counts. The Worker logs receipt creation, duplicate delivery, and dead-letter handling. Those logs do not include API keys or database passwords. Dashboards and alert products are not part of M5.
 
 ## Deferred Details
 
-M4 fixes the local topic, key, one partition, and poison-message dead letter. Still open: receipt retention, multi-publisher leases, replay, read models, SLOs, identity beyond two static keys, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
+M5 adds single-row leases, fenced publication, and transient retry. Still open: receipt retention, replay, read models, SLOs, identity beyond two static keys, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
 
 ## Decisions
 
-The binding decision set is recorded in [ADR-01](decisions/ADR-01.md) through [ADR-10](decisions/ADR-10.md).
+The binding decision set is recorded in [ADR-01](decisions/ADR-01.md) through [ADR-11](decisions/ADR-11.md).
 

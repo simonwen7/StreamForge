@@ -172,6 +172,71 @@ class WorkerProcessingTests {
         assertThat(exceptionMessage).contains("not valid JSON");
         assertThat(header(malformed, KafkaHeaders.DLT_ORIGINAL_TOPIC)).isEqualTo(WorkerTestSupport.TOPIC);
         assertThat(header(malformed, KafkaHeaders.DLT_EXCEPTION_CAUSE_FQCN)).contains("PoisonMessageException");
+        assertThat(malformed.headers().lastHeader(KafkaHeaders.DLT_EXCEPTION_STACKTRACE)).isNull();
+        assertThat(header(malformed, KafkaHeaders.DLT_EXCEPTION_MESSAGE)).doesNotContain("POSTGRES_PASSWORD");
+    }
+
+    @Test
+    void duplicateJsonKeysAreDeadLetteredWithoutAReceipt() throws Exception {
+        String deviceId = deviceId();
+        UUID eventId = UUID.randomUUID();
+        String json = "{"
+                + "\"eventId\":\"" + eventId + "\","
+                + "\"deviceId\":\"" + deviceId + "\","
+                + "\"eventType\":\"telemetry.reading\","
+                + "\"schemaVersion\":1,"
+                + "\"occurredAt\":\"" + WorkerTestSupport.OCCURRED_AT + "\","
+                + "\"measurements\":{\"temperatureC\":10.0,\"temperatureC\":80.0,\"humidityPct\":48.2,\"batteryPct\":87.0},"
+                + "\"receivedAt\":\"" + WorkerTestSupport.RECEIVED_AT + "\"}";
+        support.produce(deviceId, json, eventId.toString());
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            String values = String.join("\n", deadLetterValues());
+            assertThat(values).contains("\"temperatureC\":10.0,\"temperatureC\":80.0");
+        });
+        ConsumerRecord<String, String> dead = support.deadLetters().stream()
+                .filter(record -> record.value().contains("\"temperatureC\":80.0"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(header(dead, KafkaHeaders.DLT_EXCEPTION_MESSAGE))
+                .isEqualTo("Telemetry record contains a duplicate JSON key.");
+        assertThat(dead.headers().lastHeader(KafkaHeaders.DLT_EXCEPTION_STACKTRACE)).isNull();
+        assertThat(support.receipts(eventId)).isZero();
+    }
+
+    @Test
+    void foreignKeyViolationIsPoisonAndAnExistingReceiptConflictIsNot() throws Exception {
+        String deviceId = deviceId();
+        UUID missingParent = support.insertReading(deviceId, "21.7");
+        doAnswer(invocation -> {
+            String id = invocation.getArgument(0).toString();
+            support.jdbc.update("DELETE FROM streamforge.outbox_events WHERE event_id = ?::uuid", id);
+            support.jdbc.update("DELETE FROM streamforge.telemetry_events WHERE event_id = ?::uuid", id);
+            return invocation.callRealMethod();
+        }).when(processingRepository).insertReceipt(any());
+        support.produceValid(missingParent, deviceId, "21.7");
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(deadLetterValues()).anyMatch(value -> value.contains(missingParent.toString())));
+        assertThat(support.receipts(missingParent)).isZero();
+        reset(processingRepository);
+
+        UUID duplicate = support.insertReading(deviceId, "19.5");
+        support.jdbc.update(
+                "INSERT INTO streamforge.processed_events (event_id) VALUES (?::uuid)",
+                duplicate.toString());
+        doAnswer(invocation -> {
+            throw new org.springframework.dao.DataIntegrityViolationException(
+                    "duplicate",
+                    new java.sql.SQLException("duplicate", "23505"));
+        }).when(processingRepository).insertReceipt(any());
+        Long before = committedOffset(WorkerTestSupport.TOPIC);
+        support.produceValid(duplicate, deviceId, "19.5");
+        long expected = before == null ? 1 : before + 1;
+        await().atMost(Duration.ofSeconds(20)).until(() -> {
+            Long offset = committedOffset(WorkerTestSupport.TOPIC);
+            return offset != null && offset >= expected;
+        });
+        assertThat(support.receipts(duplicate)).isEqualTo(1);
+        assertThat(deadLetterValues()).noneMatch(value -> value.contains(duplicate.toString()));
     }
 
     private Long committedOffset(String topic) {

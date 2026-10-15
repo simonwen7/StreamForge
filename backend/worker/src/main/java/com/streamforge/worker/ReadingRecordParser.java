@@ -2,6 +2,8 @@ package com.streamforge.worker;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -20,6 +22,7 @@ final class ReadingRecordParser {
     private static final int SCHEMA_VERSION = 1;
 
     private final JsonMapper mapper = JsonMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
             .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -77,8 +80,27 @@ final class ReadingRecordParser {
         try {
             return mapper.readValue(json, Payload.class);
         } catch (RuntimeException ex) {
+            if (duplicateKey(ex)) {
+                throw new PoisonMessageException("Telemetry record contains a duplicate JSON key.");
+            }
             throw new PoisonMessageException("Telemetry record is not valid JSON.");
         }
+    }
+
+    private static boolean duplicateKey(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof StreamReadException && isDuplicateMessage(current.getMessage())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isDuplicateMessage(String message) {
+        return message != null
+                && (message.startsWith("Duplicate field") || message.startsWith("Duplicate Object property"));
     }
 
     private static java.time.Instant parseInstant(String value, String field) {

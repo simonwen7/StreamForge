@@ -8,10 +8,15 @@ import java.time.Duration;
 public class PublicationProperties {
 
     private boolean enabled;
-    private int batchSize = 50;
+    private int maxPerCycle = 20;
     private long pollDelayMs = 1000;
     private String topic = "telemetry.reading.v1";
     private Duration sendTimeout = Duration.ofSeconds(10);
+    private Duration lease = Duration.ofSeconds(30);
+    private Duration retryBase = Duration.ofSeconds(1);
+    private Duration retryMax = Duration.ofMinutes(5);
+    private double jitterFraction = 0.2;
+    private int attemptWarningInterval = 20;
 
     public boolean isEnabled() {
         return enabled;
@@ -21,12 +26,12 @@ public class PublicationProperties {
         this.enabled = enabled;
     }
 
-    public int getBatchSize() {
-        return batchSize;
+    public int getMaxPerCycle() {
+        return maxPerCycle;
     }
 
-    public void setBatchSize(int batchSize) {
-        this.batchSize = batchSize;
+    public void setMaxPerCycle(int maxPerCycle) {
+        this.maxPerCycle = maxPerCycle;
     }
 
     public long getPollDelayMs() {
@@ -51,5 +56,45 @@ public class PublicationProperties {
 
     public void setSendTimeout(Duration sendTimeout) {
         this.sendTimeout = sendTimeout;
+    }
+
+    public Duration getLease() {
+        return lease;
+    }
+
+    public void setLease(Duration lease) {
+        this.lease = lease;
+    }
+
+    public Duration getRetryBase() {
+        return retryBase;
+    }
+
+    public void setRetryBase(Duration retryBase) {
+        this.retryBase = retryBase;
+    }
+
+    public Duration getRetryMax() {
+        return retryMax;
+    }
+
+    public void setRetryMax(Duration retryMax) {
+        this.retryMax = retryMax;
+    }
+
+    public double getJitterFraction() {
+        return jitterFraction;
+    }
+
+    public void setJitterFraction(double jitterFraction) {
+        this.jitterFraction = jitterFraction;
+    }
+
+    public int getAttemptWarningInterval() {
+        return attemptWarningInterval;
+    }
+
+    public void setAttemptWarningInterval(int attemptWarningInterval) {
+        this.attemptWarningInterval = attemptWarningInterval;
     }
 }

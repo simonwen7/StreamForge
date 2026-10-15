@@ -14,10 +14,23 @@ final class ReadingMessageEncoder {
     }
 
     static ProducerRecord<String, String> record(String topic, PendingReading reading) {
+        requireEncodable(reading);
         String eventId = reading.eventId().toString();
         ProducerRecord<String, String> record = new ProducerRecord<>(topic, reading.deviceId(), json(reading));
         record.headers().add(new RecordHeader(EVENT_ID_HEADER, eventId.getBytes(StandardCharsets.UTF_8)));
         return record;
+    }
+
+    private static void requireEncodable(PendingReading reading) {
+        requirePlain(reading.deviceId());
+        requirePlain(reading.eventType());
+        requirePlain(reading.eventId().toString());
+    }
+
+    private static void requirePlain(String value) {
+        if (value == null || value.indexOf('"') >= 0 || value.indexOf('\\') >= 0 || value.indexOf('\n') >= 0) {
+            throw new PublicationPermanentException("CONTRACT_ENCODING");
+        }
     }
 
     static String json(PendingReading reading) {

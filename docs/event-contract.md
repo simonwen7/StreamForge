@@ -38,7 +38,9 @@ A new durable acceptance returns HTTP `202`. An identical retry returns HTTP `20
 }
 ```
 
-`publication` is `PENDING` until the outbox row has `published_at`, then `PUBLISHED`. `processing` is `NOT_STARTED` until a processing receipt exists, then `PROCESSED`. `processedAt` is present only after that receipt exists. HTTP 202 still means accepted into PostgreSQL, not published and not processed. Kafka acceptance alone does not make `processing` become `PROCESSED`.
+`publication` is `PENDING` until the outbox row has `published_at`, then `PUBLISHED`. A permanent publication defect sets `FAILED` and leaves `published_at` null. Transient publication failures stay `PENDING`. `processing` is `NOT_STARTED` until a processing receipt exists, then `PROCESSED`. `processedAt` is present only after that receipt exists. HTTP 202 still means accepted into PostgreSQL, not published and not processed. Kafka acceptance alone does not make `processing` become `PROCESSED`.
+
+A JSON object that repeats a key is rejected. HTTP ingestion returns 400 and stores nothing. The Worker treats the same shape as poison. Valid documents, which contain each key once, keep the same canonical hash.
 
 ## Field rules
 

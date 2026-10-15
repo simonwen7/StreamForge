@@ -61,13 +61,23 @@ public class IngestionService {
         return new IngestionResult(status, response(event));
     }
 
+    private static String publication(TelemetryRepository.StoredEvent event) {
+        if (event.publishedAt() != null) {
+            return "PUBLISHED";
+        }
+        if ("failed".equals(event.outboxStatus())) {
+            return "FAILED";
+        }
+        return "PENDING";
+    }
+
     private static AcceptanceResponse response(TelemetryRepository.StoredEvent event) {
         return new AcceptanceResponse(
                 event.eventId(),
                 event.deviceId(),
                 "ACCEPTED",
                 event.receivedAt(),
-                event.publishedAt() == null ? "PENDING" : "PUBLISHED",
+                publication(event),
                 event.processedAt() == null ? "NOT_STARTED" : "PROCESSED",
                 event.processedAt());
     }

@@ -99,6 +99,13 @@ class StreamForgeApiApplicationTests {
                 "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '3' AND success = true",
                 Integer.class);
         assertThat(versionThree).isEqualTo(1);
+        Integer versionFour = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '4' AND success = true",
+                Integer.class);
+        assertThat(versionFour).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'streamforge' AND table_name = 'outbox_events' AND column_name = 'claim_token'",
+                Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM streamforge.processed_events", Integer.class)).isZero();
 

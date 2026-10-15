@@ -11,7 +11,7 @@ M2 and M3 execute local Maven tests. The command is:
 Covered now, and executed locally:
 
 - Spring Boot application context startup against a fresh disposable PostgreSQL database via Testcontainers
-- Flyway V1 applied on that fresh database, including checksum `595439424`, followed by V2 checksum `501121659` and V3
+- Flyway V1 applied on that fresh database, including checksum `595439424`, followed by V2 checksum `501121659`, V3 checksum `39366715`, and V4 on a database that already had pending and published rows
 - Actuator health without component details
 - MVC slice coverage for validation field names, malformed JSON, sanitized unexpected errors, and a database failure that does not claim acceptance
 - Device creation, duplicate and invalid IDs, lookup, unknown devices, and bounded listing
@@ -20,18 +20,19 @@ Covered now, and executed locally:
 - API-key 401 and 403 boundaries, and startup rejection of missing or identical keys
 - The simulator's bounded, deterministic HTTP behavior without printing its credential
 - Outbox publication to Testcontainers Kafka, including a failed outbox update after a broker acknowledgement
-- API startup and HTTP 202 while the broker address is unreachable, with the outbox row left pending and health remaining UP
-- Worker receipt creation, duplicate delivery, a database failure before acknowledgement, poison records on the dead-letter topic, and a dead-letter send that fails
+- API startup and HTTP 202 while the broker address is unreachable, with both outbox rows left pending, due later, and still pending after 20 attempts
+- Concurrent claims, lease reclaim, stale-token fencing, and two publisher instances publishing one row once
+- Worker receipt creation, duplicate delivery, a database failure before acknowledgement, poison records on the dead-letter topic, a dead-letter send that fails, duplicate JSON keys, and SQLState classification
 - One HTTP request through the API, Kafka, and Worker, then an identical retry that does not add a second receipt
 
 The MVC slice keeps security filters off so it can reach the test probes. The full application context requires a credential for those paths and does not invoke the probes. Unknown business routes still require authentication.
 
 Not executed:
 
-- Multi-publisher races, dead-letter replay, and performance tests. Broker recovery was exercised locally on a disposable database and is not part of the automated suite.
-- Remote GitHub Actions for M4
+- A process kill of a live publisher, dead-letter replay, and a long soak. Claim expiry is tested by moving `claimed_until` backward. Broker recovery after a timeout is covered by the outage tests. A 200-event two-publisher soak is not part of CI.
+- Remote GitHub Actions for M5
 
-The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them. Remote GitHub Actions for M4 is **NOT VERIFIED** until the user pushes this milestone.
+The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them or the remote M4 run. Remote GitHub Actions for M5 is **NOT VERIFIED** until the user pushes this milestone.
 
 ## Testing Principles
 

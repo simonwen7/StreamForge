@@ -276,7 +276,61 @@ class IngestionIntegrationTests {
                 String.class);
         assertThat(indexes).contains(
                 "telemetry_events_device_occurred_idx",
-                "outbox_events_unpublished_idx");
+                "outbox_events_unpublished_idx",
+                "outbox_events_claim_idx");
+    }
+
+    @Test
+    void duplicateJsonKeysAreRejectedBeforeAcceptance() throws Exception {
+        String deviceId = deviceId();
+        createDevice(deviceId);
+        UUID eventId = UUID.randomUUID();
+        String duplicateMeasurement = reading(eventId, deviceId, "2026-01-01T00:00:00Z", "10.0", "48.2", "87.0")
+                .replace("\"temperatureC\":10.0", "\"temperatureC\":10.0,\"temperatureC\":80.0");
+        postReading(deviceId, duplicateMeasurement)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Malformed Request"))
+                .andExpect(jsonPath("$.detail").value("Request body contains a duplicate JSON key."));
+        String duplicateEventId = "{"
+                + "\"eventId\":\"" + eventId + "\","
+                + "\"eventId\":\"" + UUID.randomUUID() + "\","
+                + "\"deviceId\":\"" + deviceId + "\","
+                + "\"eventType\":\"telemetry.reading\","
+                + "\"schemaVersion\":1,"
+                + "\"occurredAt\":\"2026-01-01T00:00:00Z\","
+                + "\"measurements\":{\"temperatureC\":21.7,\"humidityPct\":48.2,\"batteryPct\":87.0}}";
+        postReading(deviceId, duplicateEventId)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Request body contains a duplicate JSON key."));
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.telemetry_events WHERE event_id = ?::uuid",
+                Integer.class,
+                eventId.toString())).isZero();
+    }
+
+    @Test
+    void failedOutboxIsVisibleWithoutChangingAcceptance() throws Exception {
+        String deviceId = deviceId();
+        createDevice(deviceId);
+        UUID eventId = UUID.randomUUID();
+        postReading(deviceId, reading(eventId, deviceId, "2026-01-01T00:00:00Z", "21.7", "48.2", "87.0"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.publication").value("PENDING"));
+        jdbcTemplate.update("""
+                UPDATE streamforge.outbox_events
+                SET status = 'failed', last_error_code = 'CONTRACT_ENCODING'
+                WHERE event_id = ?::uuid AND status = 'pending' AND published_at IS NULL
+                """, eventId.toString());
+        mockMvc.perform(get("/api/v1/telemetry/readings/" + eventId)
+                        .header("Authorization", "Bearer " + INGESTION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publication").value("FAILED"))
+                .andExpect(jsonPath("$.processing").value("NOT_STARTED"))
+                .andExpect(jsonPath("$.acceptance").value("ACCEPTED"));
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.telemetry_events WHERE event_id = ?::uuid",
+                Integer.class,
+                eventId.toString())).isEqualTo(1);
     }
 
     @Test
