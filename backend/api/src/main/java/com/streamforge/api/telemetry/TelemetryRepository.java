@@ -55,9 +55,11 @@ public class TelemetryRepository {
 
     public Optional<StoredEvent> find(UUID eventId) {
         return jdbcClient.sql("""
-                        SELECT e.event_id, e.device_id, e.received_at, e.canonical_hash, o.published_at
+                        SELECT e.event_id, e.device_id, e.received_at, e.canonical_hash,
+                               o.published_at, p.processed_at
                         FROM streamforge.telemetry_events e
                         JOIN streamforge.outbox_events o ON o.event_id = e.event_id
+                        LEFT JOIN streamforge.processed_events p ON p.event_id = e.event_id
                         WHERE e.event_id = :eventId
                         """)
                 .param("eventId", eventId)
@@ -71,6 +73,7 @@ public class TelemetryRepository {
                 resultSet.getString("device_id"),
                 instant(resultSet, "received_at"),
                 resultSet.getBytes("canonical_hash"),
+                null,
                 null);
     }
 
@@ -80,7 +83,8 @@ public class TelemetryRepository {
                 resultSet.getString("device_id"),
                 instant(resultSet, "received_at"),
                 resultSet.getBytes("canonical_hash"),
-                instant(resultSet, "published_at"));
+                instant(resultSet, "published_at"),
+                instant(resultSet, "processed_at"));
     }
 
     private static Instant instant(ResultSet resultSet, String column) throws SQLException {
@@ -93,6 +97,7 @@ public class TelemetryRepository {
             String deviceId,
             Instant receivedAt,
             byte[] canonicalHash,
-            Instant publishedAt) {
+            Instant publishedAt,
+            Instant processedAt) {
     }
 }

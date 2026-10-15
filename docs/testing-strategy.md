@@ -11,7 +11,7 @@ M2 and M3 execute local Maven tests. The command is:
 Covered now, and executed locally:
 
 - Spring Boot application context startup against a fresh disposable PostgreSQL database via Testcontainers
-- Flyway V1 applied on that fresh database, including checksum `595439424`, followed by V2
+- Flyway V1 applied on that fresh database, including checksum `595439424`, followed by V2 checksum `501121659` and V3
 - Actuator health without component details
 - MVC slice coverage for validation field names, malformed JSON, sanitized unexpected errors, and a database failure that does not claim acceptance
 - Device creation, duplicate and invalid IDs, lookup, unknown devices, and bounded listing
@@ -19,14 +19,19 @@ Covered now, and executed locally:
 - Event plus outbox commit, and rollback when the outbox insert fails
 - API-key 401 and 403 boundaries, and startup rejection of missing or identical keys
 - The simulator's bounded, deterministic HTTP behavior without printing its credential
+- Outbox publication to Testcontainers Kafka, including a failed outbox update after a broker acknowledgement
+- API startup and HTTP 202 while the broker address is unreachable, with the outbox row left pending and health remaining UP
+- Worker receipt creation, duplicate delivery, a database failure before acknowledgement, poison records on the dead-letter topic, and a dead-letter send that fails
+- One HTTP request through the API, Kafka, and Worker, then an identical retry that does not add a second receipt
 
 The MVC slice keeps security filters off so it can reach the test probes. The full application context requires a credential for those paths and does not invoke the probes. Unknown business routes still require authentication.
 
 Not executed:
 
-- Kafka publication, Worker processing, replay, end-to-end product journeys, and performance tests
+- Multi-publisher races, dead-letter replay, and performance tests. Broker recovery was exercised locally on a disposable database and is not part of the automated suite.
+- Remote GitHub Actions for M4
 
-The owner reported that the M2 GitHub Actions run passed. This agent did not independently verify it. Remote GitHub Actions for M3 is **NOT VERIFIED** until the user pushes this milestone.
+The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them. Remote GitHub Actions for M4 is **NOT VERIFIED** until the user pushes this milestone.
 
 ## Testing Principles
 

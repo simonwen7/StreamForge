@@ -2,7 +2,7 @@
 
 ## Status
 
-M1 approved the identity and lifecycle direction. On 2026-10-14 the owner approved a nested `measurements` object for the M3 implementation. The earlier flat example is not an accepted alternative. M3 implements this contract for HTTP acceptance and PostgreSQL storage. Kafka publication and Worker processing are not implemented.
+M1 approved the identity and lifecycle direction. On 2026-10-14 the owner approved a nested `measurements` object for the M3 implementation. The earlier flat example is not an accepted alternative. M3 implements this contract for HTTP acceptance and PostgreSQL storage. M4 republishes the stored event to Kafka. The Kafka JSON is rebuilt from typed columns, so timestamp offsets and decimal text may differ from the original HTTP body. The canonical meaning does not change. The message does not contain API keys or database credentials.
 
 ## Request
 
@@ -38,7 +38,7 @@ A new durable acceptance returns HTTP `202`. An identical retry returns HTTP `20
 }
 ```
 
-`processedAt` is not returned. `publication` stays `PENDING` until a later milestone records publication. `processing` stays `NOT_STARTED` in M3.
+`publication` is `PENDING` until the outbox row has `published_at`, then `PUBLISHED`. `processing` is `NOT_STARTED` until a processing receipt exists, then `PROCESSED`. `processedAt` is present only after that receipt exists. HTTP 202 still means accepted into PostgreSQL, not published and not processed. Kafka acceptance alone does not make `processing` become `PROCESSED`.
 
 ## Field rules
 
@@ -86,12 +86,23 @@ Lengths are unsigned 16-bit big-endian values, so the encoding does not depend o
 
 Error bodies use the existing Problem Details shape. They do not include credentials or SQL.
 
-## Still deferred
+## Kafka record
 
-Kafka envelope, topic key, schema distribution, late-event business policy, `processedAt`, and publication status transitions beyond the nullable `published_at` column.
+| Item | Value |
+| --- | --- |
+| Topic | `telemetry.reading.v1` |
+| Dead-letter topic | `telemetry.reading.v1.dlt` |
+| Key | `deviceId` |
+| Header | `event-id`, equal to the payload `eventId` |
+| Value | JSON with the nested `measurements` object, plus server `receivedAt` |
+
+The Worker rejects a record whose key, header, schema, or measurements do not match the stored event. Malformed JSON, an unsupported schema version, a missing stored event, and a stored row that does not match the record are poison messages. They are copied to the dead-letter topic only after Kafka confirms that copy. A temporary PostgreSQL failure stays on the main topic and is retried.
+
+Schema Registry, late-event business policy, and dead-letter replay are not part of this contract.
 
 ## Related Documents
 
 - [Architecture](architecture.md)
 - [ADR-08](decisions/ADR-08.md)
 - [M3 Milestone](milestones/M3.md)
+- [M4 Milestone](milestones/M4.md)

@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-M2 was accepted by the owner on 2026-10-14. The owner reported that remote GitHub Actions passed; this agent did not independently verify that run. M3 is implemented locally and is pending Final Check. Do not start M4 automatically.
+M2 and M3 were accepted by the owner. The owner reported that remote GitHub Actions passed for both; this agent did not independently verify those runs. M4 is implemented locally and is pending Final Check. Do not start M5 automatically.
 
 ## Environment Audit
 
@@ -33,20 +33,48 @@ From the repository root:
 ./mvnw -B -ntp verify
 ```
 
-Start local PostgreSQL (loopback only):
+Start local PostgreSQL and Kafka. Both host ports stay on loopback. Do not use `docker compose down -v`.
 
 ```bash
 cp infra/.env.example infra/.env   # if you do not already have a local file
-docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres
+docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres kafka
 docker compose --env-file infra/.env -f infra/compose.yaml ps
 docker inspect --format '{{json .HostConfig.PortBindings}}' streamforge-postgres-1
+docker inspect --format '{{json .HostConfig.PortBindings}}' streamforge-kafka-1
 ```
 
-Run the API against that database:
+`kafka-init` creates `telemetry.reading.v1` and `telemetry.reading.v1.dlt` if they are missing. It does not delete topics. The host client address is `127.0.0.1:9094`. Containers on the Compose network use `kafka:9092`. The controller listener is not published.
+
+Run the API with the publisher off:
 
 ```bash
 set -a && source infra/.env && set +a
+export OUTBOX_PUBLISHER_ENABLED=false
 ./mvnw -pl backend/api spring-boot:run
+```
+
+The preserved database contains pending events from earlier milestones. Setting `OUTBOX_PUBLISHER_ENABLED=true` publishes those rows as well as new ones. Use a disposable database when you want to exercise publication without changing that data.
+
+After the API has applied Flyway V3, run one Worker:
+
+```bash
+export KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094
+./mvnw -pl backend/worker spring-boot:run
+```
+
+The Worker does not run Flyway. It has no web server. Its consumer group is `streamforge-telemetry-worker`. `./mvnw -pl backend/worker package` writes a plain jar for tests and `streamforge-worker-0.1.0-SNAPSHOT-exec.jar` as the runnable archive.
+
+Read-only checks:
+
+```bash
+docker compose --env-file infra/.env -f infra/compose.yaml exec postgres \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+  "SELECT status, count(*) FROM streamforge.outbox_events GROUP BY status;"
+docker compose --env-file infra/.env -f infra/compose.yaml exec postgres \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+  "SELECT count(*) FROM streamforge.processed_events;"
+docker compose --env-file infra/.env -f infra/compose.yaml exec kafka \
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
 ```
 
 Health check:
@@ -66,9 +94,9 @@ Do not commit `infra/.env`.
 ## Repository Conventions
 
 - Java 21, Maven Wrapper, and Spring Boot 4.1.1 are the M2 baseline.
-- Application modules are `backend/api` and `backend/simulator`. The simulator is a manual CLI, not a second server. Worker and shared-contract directories are still omitted.
-- Package roots are `com.streamforge.api` and `com.streamforge.simulator`.
-- M3 device and telemetry routes require bearer API keys. Replay and Kafka publication are not implemented.
+- Application modules are `backend/api`, `backend/worker`, and `backend/simulator`. The simulator is a manual CLI. The Worker is a separate process and does not depend on the API jar.
+- Package roots are `com.streamforge.api`, `com.streamforge.worker`, and `com.streamforge.simulator`.
+- M3 device and telemetry routes require bearer API keys. Replay is not implemented. Kafka publication runs only when `OUTBOX_PUBLISHER_ENABLED=true`, and only one API process may have it enabled.
 - Test-only controllers live in `src/test/java` under `com.streamforge.testing`, outside the production component scan, and are not packaged in the API jar.
 - PostgreSQL host publishing must remain `127.0.0.1:${POSTGRES_PORT:-5432}:5432`.
 - `POSTGRES_PASSWORD`, `DEVICE_ADMIN_API_KEY`, and `INGESTION_API_KEY` are required. The API fails startup when any required secret is missing, blank, or, for the API keys, shorter than 32 characters or identical. Failure text names the variable and does not include the value.
@@ -85,7 +113,11 @@ Flyway creates schema `streamforge` from `spring.flyway.schemas` before the scri
 
 ## Flyway V2
 
-`V2__create_ingestion_tables.sql` creates `devices`, `telemetry_events`, and `outbox_events`. It is additive. The outbox status check allows `pending`, `published`, and `failed` so a later publisher can record publication. M3 inserts only `pending` rows with `published_at` null.
+`V2__create_ingestion_tables.sql` creates `devices`, `telemetry_events`, and `outbox_events`. It is additive. Its checksum on databases that applied this file is `501121659`. Do not edit it.
+
+## Flyway V3
+
+`V3__create_processed_events.sql` creates `streamforge.processed_events`. The Worker inserts one row per accepted event after its database transaction commits. The API does not write this table during HTTP acceptance. V3 is additive. On the preserved local database its checksum is `39366715`. Do not repair history or delete the Compose volume to apply it.
 
 ## API keys and the simulator
 
@@ -132,10 +164,10 @@ PostgreSQL remains published on `127.0.0.1` only. Changing the API bind address 
 backend/
   api/                 # Spring Boot API process
   simulator/           # Manual HTTP CLI (M3)
-  worker/              # deferred until needed
+  worker/              # Independent Kafka consumer
   shared-contract/     # deferred until needed
 frontend/              # deferred
-infra/                 # local PostgreSQL Compose
+infra/                 # local PostgreSQL and Kafka Compose
 docs/
   decisions/
   milestones/
@@ -158,3 +190,5 @@ Git actions are owned by the user. Agents must not initialize the repository, st
 - [Testing Strategy](testing-strategy.md)
 - [Known Issues and Risks](known-issues.md)
 - [M2 Milestone](milestones/M2.md)
+- [M3 Milestone](milestones/M3.md)
+- [M4 Milestone](milestones/M4.md)

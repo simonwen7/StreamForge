@@ -68,6 +68,7 @@ public class IngestionService {
                 "ACCEPTED",
                 event.receivedAt(),
                 event.publishedAt() == null ? "PENDING" : "PUBLISHED",
-                "NOT_STARTED");
+                event.processedAt() == null ? "NOT_STARTED" : "PROCESSED",
+                event.processedAt());
     }
 }

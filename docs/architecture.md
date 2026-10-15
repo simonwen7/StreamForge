@@ -2,7 +2,7 @@
 
 ## Scope and Status
 
-This is the target architecture approved for progressive implementation after M1. M3 implements device registration and durable telemetry acceptance, including the outbox insert, on the API. The outbox publisher, Kafka, and Worker in the diagrams below are still target behavior, not running processes.
+This is the target architecture approved for progressive implementation after M1. M3 accepts telemetry and writes the outbox row. M4 adds a disabled-by-default publisher in the API, a single-node Kafka broker, and an independent Worker that records one processing receipt. Read models, replay, leases, and multi-publisher coordination remain later work. M4 is pending Final Check and is not a production deployment.
 
 ## Logical Components and Deployment Units
 
@@ -10,9 +10,9 @@ This is the target architecture approved for progressive implementation after M1
 | --- | --- | --- |
 | Ingestion API | Authenticate, authorize, validate, deduplicate, and durably accept events | Backend API |
 | Query API | Serve device and telemetry read models | Backend API |
-| Outbox publisher | Claim committed outbox rows and publish them to Kafka | Backend API initially; ownership may be refined in M3 |
-| Telemetry processor | Consume events and apply idempotent business effects | Worker |
-| Read-model updater | Maintain queryable device and telemetry state | Worker |
+| Outbox publisher | Poll pending outbox rows and publish them to Kafka | Backend API. One enabled instance in M4. No separate relay process. |
+| Telemetry processor | Consume events and insert one idempotent processing receipt | Worker |
+| Read-model updater | Maintain queryable device and telemetry state | Later Worker work. M4 does not build an analytics read model. |
 | Contract module | Shared event envelope/types without business coupling | Build-time library, not a process |
 | Demo UI | Read-only visualization and authorized operational surfaces | Frontend |
 | PostgreSQL | Transactional event acceptance, outbox, deduplication, and read state | Database |
@@ -69,10 +69,10 @@ sequenceDiagram
     A->>D: Insert accepted event + outbox row
     D-->>A: Commit
     A-->>P: 202 Accepted
-    O->>D: Claim committed outbox row
-    O->>K: Publish event
+    O->>D: Read oldest pending rows
+    O->>K: Publish event and wait for acknowledgement
     K-->>O: Acknowledge
-    O->>D: Mark outbox row published
+    O->>D: Mark that pending row published
     K->>W: Deliver event (possibly more than once)
     W->>D: Begin transaction
     W->>D: Record processing ID + apply effects
@@ -80,7 +80,7 @@ sequenceDiagram
     W-->>K: Commit/acknowledge offset
 ```
 
-M3 implements the acceptance transaction through the HTTP response. Publisher claiming, Kafka acknowledgement, and Worker processing remain later work.
+M4 runs this path when `OUTBOX_PUBLISHER_ENABLED=true` and the Worker is running. The publisher does not lock the row across the Kafka call. A second enabled API process can publish the same pending row. That restriction is intentional for M4.
 
 ## Transaction Boundaries
 
@@ -101,9 +101,9 @@ The outbox publisher reads only committed rows. Publishing to Kafka and marking 
 
 ### Processing Transaction
 
-The Worker will combine its deduplication record and business/read-model mutations in one PostgreSQL transaction where feasible. The Kafka offset is acknowledged only after successful commit. A crash between database commit and offset acknowledgement causes redelivery; the existing processing record must turn that redelivery into a no-op for business effects.
+The Worker validates the record, reconciles it with the stored telemetry row, and inserts `streamforge.processed_events` in one transaction. `INSERT ... ON CONFLICT (event_id) DO NOTHING` makes a duplicate delivery a no-op. The Kafka offset is acknowledged only after that transaction commits. A crash between commit and acknowledgement redelivers the record and does not insert a second receipt. This is not exactly-once Kafka delivery.
 
-Partitioning keys and ordering guarantees are not yet approved. Device ID is a candidate key because it may preserve per-device order, but M3 must validate hot-key and ordering requirements.
+The topic key is `deviceId`. Each M4 topic has one partition, so local consumption is ordered for the whole topic. That does not remove hot-key risk if the partition count later increases.
 
 ## Transactional Outbox
 
@@ -112,11 +112,12 @@ The outbox prevents the API from having to atomically commit to PostgreSQL and K
 - If the acceptance transaction rolls back, neither accepted event nor outbox row exists.
 - If Kafka is unavailable after acceptance, the committed outbox row remains retryable.
 - If publication succeeds but recording publication fails, the publisher may send the same event again.
-- If the publisher crashes while handling a row, a lease/claim timeout or equivalent mechanism must make it retryable.
-- If an event is permanently unpublishable, it must become visible to operators rather than retry forever silently.
-- If multiple publisher instances race, row claiming and stable identifiers must avoid loss; duplicates remain possible and safe.
+- If the publisher crashes after reading a row and before Kafka accepts it, the row stays `pending` and the next poll retries it. M4 does not take a lease.
+- If the publisher crashes after Kafka accepts the record and before the published update, the next poll sends the record again.
+- A permanently unpublishable row stays `pending` and is retried. M4 does not mark it `failed`. Operator retry policy is M5.
+- Two enabled publishers can both send the same row. M4 runs one publisher. M5 is responsible for leases.
 
-Planned controls include bounded retry/backoff, claim recovery, publication attempt metadata, lag/failure metrics, and an authorized recovery path. Exact schema, polling/notification mechanism, retention, and dead-letter policy remain deferred to M3/M4.
+The publisher polls about once a second, 50 rows at a time, oldest first. It uses producer `acks=all` and updates `published_at` only after the broker acknowledges. Kafka producer idempotence does not remove duplicates across a process restart.
 
 ## Failure Scenarios
 
@@ -128,7 +129,7 @@ Planned controls include bounded retry/backoff, claim recovery, publication atte
 | Publisher sends then crashes before marking published | Event may be republished; Worker idempotency protects effects. |
 | Worker fails before database commit | Kafka redelivers; no partial committed effect should remain. |
 | Worker commits then fails before offset acknowledgement | Kafka redelivers; processing ID makes effects a no-op. |
-| Invalid or poison event reaches Worker | Do not silently discard; retry/dead-letter and operator policy is finalized later. |
+| Invalid or poison event reaches Worker | Publish the original record to `telemetry.reading.v1.dlt` and acknowledge the source only after Kafka accepts the dead-letter record. A failed dead-letter send leaves the source unacknowledged. |
 | PostgreSQL unavailable | Durable acceptance and processing are unavailable; API must not return false acceptance. |
 
 Backpressure thresholds, admission behavior during prolonged Kafka outages, and recovery objectives are unresolved.
@@ -148,15 +149,15 @@ PostgreSQL is the primary operational and initial analytics database. S3/Parquet
 
 ## Deployment Assumptions
 
-Local Kafka is planned as single-node KRaft through Docker Compose in M4. This is suitable for development and failure exercises but provides no broker high availability. AWS is the eventual target; EC2 plus Docker Compose is a preferred candidate only, pending M9 cost, security, backup, resource, and operations evaluation and explicit deployment approval.
+Local Kafka is Apache Kafka 4.2.1 in single-node KRaft mode. Replication factor is 1. Broker disk loss, retention expiry, and an unrecoverable single-node volume can drop records that PostgreSQL and the Worker have not both retained. A Kafka acknowledgement does not mean the Worker has committed a receipt. AWS remains a later decision, pending M9 review and explicit approval.
 
 ## Observability
 
-Planned telemetry includes structured logs with event IDs, API and Worker health, acceptance/publication/processing counters, outbox age and backlog, consumer lag, retries, conflicts, and processing failures. Metric names, tooling, alert thresholds, and retention are not yet selected.
+M4 logs outbox polling, publication success and failure, Worker consumption, receipt creation, duplicate delivery, and dead-letter handling. Those logs include the event ID and topic. They do not include API keys or database passwords. Counters, lag dashboards, and alert thresholds are not part of M4.
 
 ## Deferred Details
 
-Open items include API shape, canonical payload comparison, database schemas, isolation/locking, event retention, Kafka topics and partitions, keying, schema compatibility enforcement, retries and dead-letter handling, replay semantics, authentication/authorization technology, read models, SLOs, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
+M4 fixes the local topic, key, one partition, and poison-message dead letter. Still open: receipt retention, multi-publisher leases, replay, read models, SLOs, identity beyond two static keys, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
 
 ## Decisions
 

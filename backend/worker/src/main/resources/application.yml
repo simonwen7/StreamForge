@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: streamforge-worker
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:streamforge}
+    username: ${POSTGRES_USER:streamforge}
+    password: ${POSTGRES_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9094}
+    consumer:
+      group-id: streamforge-telemetry-worker
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual_immediate
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 8000
+    admin:
+      fail-fast: false
+      auto-create: false
+
+streamforge:
+  worker:
+    topic: ${WORKER_TOPIC:telemetry.reading.v1}
+    dead-letter-topic: ${WORKER_DEAD_LETTER_TOPIC:telemetry.reading.v1.dlt}
+    retry-delay-ms: ${WORKER_RETRY_DELAY_MS:5000}

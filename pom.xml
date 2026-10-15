@@ -19,6 +19,7 @@
     <description>Cloud-native IoT event processing platform foundation.</description>
 
     <modules>
+        <module>backend/worker</module>
         <module>backend/api</module>
         <module>backend/simulator</module>
     </modules>

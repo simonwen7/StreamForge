@@ -234,6 +234,19 @@ class IngestionIntegrationTests {
                 "INSERT INTO streamforge.outbox_events (event_id) VALUES (?::uuid)", accepted.toString()))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(count("outbox_events", accepted)).isEqualTo(1);
+
+        jdbcTemplate.update(
+                "INSERT INTO streamforge.processed_events (event_id) VALUES (?::uuid)",
+                accepted.toString());
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO streamforge.processed_events (event_id) VALUES (?::uuid)",
+                accepted.toString()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO streamforge.processed_events (event_id) VALUES (?::uuid)",
+                UUID.randomUUID().toString()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(count("processed_events", accepted)).isEqualTo(1);
     }
 
     @Test
@@ -251,7 +264,13 @@ class IngestionIntegrationTests {
         List<String> tables = jdbcTemplate.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'streamforge'",
                 String.class);
-        assertThat(tables).contains("devices", "telemetry_events", "outbox_events", "schema_info", "flyway_schema_history");
+        assertThat(tables).contains(
+                "devices", "telemetry_events", "outbox_events", "processed_events",
+                "schema_info", "flyway_schema_history");
+        Integer versionThree = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '3' AND success = true",
+                Integer.class);
+        assertThat(versionThree).isEqualTo(1);
         List<String> indexes = jdbcTemplate.queryForList(
                 "SELECT indexname FROM pg_indexes WHERE schemaname = 'streamforge'",
                 String.class);

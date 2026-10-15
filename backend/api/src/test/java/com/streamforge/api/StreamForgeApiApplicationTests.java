@@ -2,10 +2,12 @@ package com.streamforge.api;
 
 import com.streamforge.api.support.PostgresTestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
+import com.streamforge.api.publication.OutboxPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.flyway.autoconfigure.FlywayProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -50,6 +52,9 @@ class StreamForgeApiApplicationTests {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     @Test
     void contextStartsWithPostgreSQL() throws Exception {
         assertThat(dataSource).isNotNull();
@@ -85,10 +90,17 @@ class StreamForgeApiApplicationTests {
                 Integer.class);
         assertThat(checksum).isEqualTo(595439424);
 
-        Integer versionTwo = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '2' AND success = true",
+        Integer versionTwoChecksum = jdbcTemplate.queryForObject(
+                "SELECT checksum FROM streamforge.flyway_schema_history WHERE version = '2'",
                 Integer.class);
-        assertThat(versionTwo).isEqualTo(1);
+        assertThat(versionTwoChecksum).isEqualTo(501121659);
+
+        Integer versionThree = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '3' AND success = true",
+                Integer.class);
+        assertThat(versionThree).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.processed_events", Integer.class)).isZero();
 
         String notes = jdbcTemplate.queryForObject(
                 "SELECT notes FROM streamforge.schema_info WHERE id = 1",
@@ -116,6 +128,8 @@ class StreamForgeApiApplicationTests {
                 .andExpect(jsonPath("$.type").value("about:blank"))
                 .andExpect(content().string(not(containsString("Exception"))))
                 .andExpect(content().string(not(containsString("stackTrace"))));
+
+        assertThat(applicationContext.getBeansOfType(OutboxPublisher.class)).isEmpty();
 
         mockMvc.perform(get("/internal/error-probe")
                         .header("Authorization", "Bearer test-ingestion-key-0123456789abcdef"))

@@ -2,7 +2,7 @@
 
 StreamForge is a planned cloud-native event processing and analytics platform. Its first MVP domain is IoT telemetry and device monitoring: accepting versioned readings, processing them asynchronously, and exposing useful read models while making reliability behavior observable.
 
-The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M2 added the Java API foundation. M3 adds device registration, nested telemetry acceptance, and an outbox row. Kafka publication, the Worker, and AWS deployment remain unimplemented.
+The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M3 accepts nested telemetry into PostgreSQL. M4 publishes pending outbox rows to a local Kafka broker and records one Worker processing receipt. AWS deployment remains unimplemented.
 
 ## Planned Architecture
 
@@ -19,20 +19,23 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 ## Implemented now
 
-- Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`
-- JDBC, Flyway, and local PostgreSQL 17.11 through Docker Compose
+- Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`, `backend/worker`, and `backend/simulator`
+- JDBC, Flyway V1–V3, and local PostgreSQL 17.11 through Docker Compose
 - Device registration and nested `telemetry.reading` acceptance
 - Atomic event and outbox insertion, with idempotent retries
+- An outbox publisher in the API, off unless `OUTBOX_PUBLISHER_ENABLED=true`
+- Apache Kafka 4.2.1, single-node KRaft, loopback host port `127.0.0.1:9094`
+- An independent Worker that writes `streamforge.processed_events` and acknowledges Kafka only after commit
 - Two loopback API keys for device administration and ingestion
 - A manual Java CLI simulator in `backend/simulator`. Repeating a seed is successful: HTTP 202 is a new acceptance and HTTP 200 is the same event already accepted
 - Actuator health, request validation, and RFC 9457 error responses
-- JUnit and Testcontainers tests, exercised locally
-- A GitHub Actions workflow. The owner reported that the M2 run passed. M3 has not been pushed.
+- JUnit and Testcontainers tests, including PostgreSQL and Kafka
+- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs. Remote M4 CI is not verified.
 
 ## Planned for later milestones
 
-- Apache Kafka publication and the Worker
-- Replay and analytics
+- Multi-publisher leases, durable retry orchestration, and dead-letter replay
+- Analytics and historical read models
 - A frontend stack, with Node.js 24 LTS to be evaluated before that work
 - AWS deployment, only after M9 review and explicit approval
 
@@ -42,7 +45,9 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 **M2 — Java Backend Foundation was accepted by the owner on 2026-10-14.** Local tests passed. The owner reported that remote GitHub Actions passed. This repository's agent did not independently verify that remote run.
 
-**M3 — Event Sources & Ingestion is implemented and tested locally. It is pending Final Check / user acceptance.** Remote GitHub Actions for M3 is not verified. M4 has not started.
+**M3 — Event Sources & Ingestion was accepted by the owner.** The local M3 recheck passed. The owner reported that GitHub Actions passed. This agent did not independently verify that remote run.
+
+**M4 — Asynchronous Event Processing is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M4 is not verified.
 
 ## Planned Repository Layout
 
@@ -51,11 +56,11 @@ M2 introduced `backend/api` and `infra`. Later directories are created only when
 ```text
 backend/
   api/                 # Spring Boot API process
-  simulator/           # Manual HTTP telemetry CLI (M3)
-  worker/              # deferred until a later milestone
+  simulator/           # Manual HTTP telemetry CLI
+  worker/              # Independent Kafka consumer
   shared-contract/     # deferred until a later milestone
 frontend/              # demo and operational UI
-infra/                 # local PostgreSQL Compose
+infra/                 # local PostgreSQL and Kafka Compose
 docs/                  # requirements, architecture, decisions, and records
 ```
 
@@ -71,6 +76,7 @@ docs/                  # requirements, architecture, decisions, and records
 - [M1 Milestone Report](docs/milestones/M1.md)
 - [M2 Milestone Report](docs/milestones/M2.md)
 - [M3 Milestone Report](docs/milestones/M3.md)
+- [M4 Milestone Report](docs/milestones/M4.md)
 
 ## Local Development
 
@@ -78,9 +84,17 @@ docs/                  # requirements, architecture, decisions, and records
 export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 ./mvnw -B -ntp verify
 cp infra/.env.example infra/.env
-docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres
+docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres kafka
 set -a && source infra/.env && set +a
+export OUTBOX_PUBLISHER_ENABLED=false
 ./mvnw -pl backend/api spring-boot:run
+```
+
+Leave the publisher disabled against the preserved development database. That database still has pending M3 events, and enabling the publisher sends them. Start the Worker only after Flyway has applied V3:
+
+```bash
+export KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094
+./mvnw -pl backend/worker spring-boot:run
 ```
 
 ## Safety and Delivery Boundaries
