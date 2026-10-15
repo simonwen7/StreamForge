@@ -107,7 +107,8 @@ class StreamForgeApiApplicationTests {
                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'streamforge' AND table_name = 'outbox_events' AND column_name = 'claim_token'",
                 Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM streamforge.processed_events", Integer.class)).isZero();
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'streamforge' AND table_name = 'processed_events'",
+                Integer.class)).isEqualTo(1);
 
         String notes = jdbcTemplate.queryForObject(
                 "SELECT notes FROM streamforge.schema_info WHERE id = 1",

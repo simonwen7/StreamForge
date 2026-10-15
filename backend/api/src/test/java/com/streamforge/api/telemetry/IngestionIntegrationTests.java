@@ -247,6 +247,9 @@ class IngestionIntegrationTests {
                 UUID.randomUUID().toString()))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(count("processed_events", accepted)).isEqualTo(1);
+        jdbcTemplate.update(
+                "DELETE FROM streamforge.processed_events WHERE event_id = ?::uuid",
+                accepted.toString());
     }
 
     @Test

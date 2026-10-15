@@ -156,6 +156,9 @@ class AnalyticsQueryTests {
                 .andExpect(jsonPath("$.latest.occurredAt").value("2026-05-01T16:00:00Z"));
         series(device, "2026-05-01T00:00:00Z", "2026-05-02T00:00:00Z", "hour")
                 .andExpect(jsonPath("$.buckets[0].bucketStart").value("2026-05-01T16:00:00Z"));
+        jdbcTemplate.update(
+                "DELETE FROM streamforge.processed_events WHERE event_id = ?::uuid",
+                failed.toString());
     }
 
     @Test

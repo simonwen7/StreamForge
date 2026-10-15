@@ -27,6 +27,8 @@ class AnalyticsSchemaUpgradeTests {
             assertThat(checksum(jdbc, "2")).isEqualTo(501121659);
             assertThat(checksum(jdbc, "3")).isEqualTo(39366715);
             assertThat(checksum(jdbc, "4")).isEqualTo(-1580136198);
+            assertThat(jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM streamforge.processed_events", Integer.class)).isZero();
 
             UUID eventId = UUID.randomUUID();
             jdbc.update("INSERT INTO streamforge.devices (device_id) VALUES ('history-device')");
