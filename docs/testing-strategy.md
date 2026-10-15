@@ -24,15 +24,18 @@ Covered now, and executed locally:
 - Concurrent claims, lease reclaim, stale-token fencing, and two publisher instances publishing one row once
 - Worker receipt creation, duplicate delivery, a database failure before acknowledgement, poison records on the dead-letter topic, a dead-letter send that fails, duplicate JSON keys, and SQLState classification
 - One HTTP request through the API, Kafka, and Worker, then an identical retry that does not add a second receipt
+- Analytics summary, UTC series, keyset readings, admin versus ingestion authorization, and null empty windows
+- Whole-UTC-day rebuild, idempotent rerun, injected chunk failure, resume, advisory-lock exclusion, and V5 upgrade of a populated V4 database
+- `EXPLAIN (ANALYZE, BUFFERS)` for 1,000, 10,000, and 100,000 device-scoped rows
 
 The MVC slice keeps security filters off so it can reach the test probes. The full application context requires a credential for those paths and does not invoke the probes. Unknown business routes still require authentication.
 
 Not executed:
 
 - A process kill of a live publisher, dead-letter replay, and a long soak. Claim expiry is tested by moving `claimed_until` backward. Broker recovery after a timeout is covered by the outage tests. A 200-event two-publisher soak is not part of CI.
-- Remote GitHub Actions for M5
+- Remote GitHub Actions for M6
 
-The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them or the remote M4 run. Remote GitHub Actions for M5 is **NOT VERIFIED** until the user pushes this milestone.
+The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them or the remote M4 or M5 runs. Remote GitHub Actions for M6 is **NOT VERIFIED** until the user pushes this milestone.
 
 ## Testing Principles
 

@@ -44,6 +44,13 @@ streamforge:
     attempt-warning-interval: ${OUTBOX_PUBLISHER_ATTEMPT_WARNING_INTERVAL:20}
     topic: ${OUTBOX_TOPIC:telemetry.reading.v1}
     send-timeout: ${OUTBOX_PUBLISHER_SEND_TIMEOUT:10s}
+  analytics:
+    rebuild:
+      enabled: ${STREAMFORGE_ANALYTICS_REBUILD_ENABLED:false}
+      from: ${STREAMFORGE_ANALYTICS_REBUILD_FROM:}
+      to: ${STREAMFORGE_ANALYTICS_REBUILD_TO:}
+      device-id: ${STREAMFORGE_ANALYTICS_REBUILD_DEVICE_ID:}
+      run-id: ${STREAMFORGE_ANALYTICS_REBUILD_RUN_ID:}
 
 server:
   port: ${SERVER_PORT:8080}

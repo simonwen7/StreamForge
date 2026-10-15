@@ -2,7 +2,7 @@
 
 ## Scope and Status
 
-This is the target architecture approved for progressive implementation after M1. M3 accepts telemetry and writes the outbox row. M4 adds a disabled-by-default publisher in the API, a single-node Kafka broker, and an independent Worker that records one processing receipt. Read models, replay, leases, and multi-publisher coordination remain later work. M4 is pending Final Check and is not a production deployment.
+This is the target architecture approved for progressive implementation after M1. M3 accepts telemetry and writes the outbox row. M4 adds a disabled-by-default publisher in the API, a single-node Kafka broker, and an independent Worker that records one processing receipt. M5 adds single-row claims, fencing, and transient retry. M6 answers analytics questions from accepted telemetry and can rebuild derived hourly statistics. Replay and public deployment remain later work. M6 is pending Final Check and is not a production deployment.
 
 ## Logical Components and Deployment Units
 
@@ -12,7 +12,7 @@ This is the target architecture approved for progressive implementation after M1
 | Query API | Serve device and telemetry read models | Backend API |
 | Outbox publisher | Poll pending outbox rows and publish them to Kafka | Backend API. One enabled instance in M4. No separate relay process. |
 | Telemetry processor | Consume events and insert one idempotent processing receipt | Worker |
-| Read-model updater | Maintain queryable device and telemetry state | Later Worker work. M4 does not build an analytics read model. |
+| Read-model updater | Maintain queryable device and telemetry state | API queries `telemetry_events` directly. The derived hour table is rebuilt by an explicit command, not by the Worker. |
 | Contract module | Shared event envelope/types without business coupling | Build-time library, not a process |
 | Demo UI | Read-only visualization and authorized operational surfaces | Frontend |
 | PostgreSQL | Transactional event acceptance, outbox, deduplication, and read state | Database |
@@ -158,9 +158,9 @@ The publisher logs claims, publication, retry, and permanent failure with the ev
 
 ## Deferred Details
 
-M5 adds single-row leases, fenced publication, and transient retry. Still open: receipt retention, replay, read models, SLOs, identity beyond two static keys, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
+M5 adds single-row leases, fenced publication, and transient retry. M6 adds raw-telemetry analytics and a UTC-day rebuild. Still open: receipt retention, replay, SLOs, identity beyond two static keys, and deployment topology. They are tracked in [Known Issues and Risks](known-issues.md).
 
 ## Decisions
 
-The binding decision set is recorded in [ADR-01](decisions/ADR-01.md) through [ADR-11](decisions/ADR-11.md).
+The binding decision set is recorded in [ADR-01](decisions/ADR-01.md) through [ADR-12](decisions/ADR-12.md).
 

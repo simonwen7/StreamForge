@@ -100,7 +100,7 @@ Error bodies use the existing Problem Details shape. They do not include credent
 
 The Worker rejects a record whose key, header, schema, or measurements do not match the stored event. Malformed JSON, an unsupported schema version, a missing stored event, and a stored row that does not match the record are poison messages. They are copied to the dead-letter topic only after Kafka confirms that copy. A temporary PostgreSQL failure stays on the main topic and is retried.
 
-Schema Registry, late-event business policy, and dead-letter replay are not part of this contract.
+Schema Registry and dead-letter replay are not part of this contract. Analytics uses `occurredAt` as event time. A reading accepted later can fall in an earlier UTC hour. Query intervals are half-open. Duplicate acceptance does not add a second row. See [M6](milestones/M6.md).
 
 ## Related Documents
 

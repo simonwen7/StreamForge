@@ -30,6 +30,7 @@ public class SecurityConfiguration {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/devices").hasAuthority(ApiKeyAuthenticationFilter.DEVICE_ADMIN)
                         .requestMatchers(HttpMethod.GET, "/api/v1/devices", "/api/v1/devices/**").hasAuthority(ApiKeyAuthenticationFilter.DEVICE_ADMIN)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/analytics/**").hasAuthority(ApiKeyAuthenticationFilter.DEVICE_ADMIN)
                         .requestMatchers("/api/v1/telemetry/**").hasAuthority(ApiKeyAuthenticationFilter.INGESTION)
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().denyAll())

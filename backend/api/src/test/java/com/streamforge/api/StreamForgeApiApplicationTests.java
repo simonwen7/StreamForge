@@ -137,6 +137,12 @@ class StreamForgeApiApplicationTests {
                 .andExpect(content().string(not(containsString("stackTrace"))));
 
         assertThat(applicationContext.getBeansOfType(OutboxPublisher.class)).isEmpty();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM streamforge.flyway_schema_history WHERE version = '5' AND success = true",
+                Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'streamforge' AND table_name = 'device_hour_stats'",
+                Integer.class)).isEqualTo(1);
 
         mockMvc.perform(get("/internal/error-probe")
                         .header("Authorization", "Bearer test-ingestion-key-0123456789abcdef"))

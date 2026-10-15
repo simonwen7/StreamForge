@@ -30,12 +30,13 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 - A manual Java CLI simulator in `backend/simulator`. Repeating a seed is successful: HTTP 202 is a new acceptance and HTTP 200 is the same event already accepted
 - Actuator health, request validation, and RFC 9457 error responses
 - JUnit and Testcontainers tests, including PostgreSQL and Kafka
-- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs or the remote M4 run. Remote M5 CI is not verified.
+- Device-admin analytics for summary, UTC hour and day series, and keyset reading history
+- An explicit, default-off rebuild of derived hourly statistics from accepted telemetry
+- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs or the remote M4 or M5 runs. Remote M6 CI is not verified.
 
 ## Planned for later milestones
 
-- Dead-letter replay, analytics, and a longer reliability soak
-- Analytics and historical read models
+- Dead-letter replay and a longer reliability soak
 - A frontend stack, with Node.js 24 LTS to be evaluated before that work
 - AWS deployment, only after M9 review and explicit approval
 
@@ -49,7 +50,9 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 **M4 — Asynchronous Event Processing was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
 
-**M5 — Data Correctness & Reliability is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M5 is not verified.
+**M5 — Data Correctness & Reliability was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
+
+**M6 — Storage, Analytics & Historical Processing is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M6 is not verified.
 
 ## Planned Repository Layout
 

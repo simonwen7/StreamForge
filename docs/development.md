@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-M2 and M3 were accepted by the owner. The owner reported that remote GitHub Actions passed for both; this agent did not independently verify those runs. M4 is implemented locally and is pending Final Check. Do not start M5 automatically.
+M1 through M5 were accepted by the owner. This agent did not independently verify the remote GitHub Actions runs. M6 is implemented locally and is pending Final Check. Do not start M7 automatically.
 
 ## Environment Audit
 
@@ -63,6 +63,17 @@ export KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094
 ```
 
 The Worker does not run Flyway. It has no web server. Its consumer group is `streamforge-telemetry-worker`. `./mvnw -pl backend/worker package` writes a plain jar for tests and `streamforge-worker-0.1.0-SNAPSHOT-exec.jar` as the runnable archive.
+
+Analytics reads require the device-admin key. Summary and series are under `/api/v1/analytics/devices/{deviceId}`. Readings are under `/api/v1/devices/{deviceId}/readings`. Leave `STREAMFORGE_ANALYTICS_REBUILD_ENABLED` false for the API process. A rebuild is a separate invocation that exits when it finishes. That invocation does not start the HTTP server, so it can run while the API is already listening:
+
+```bash
+export STREAMFORGE_ANALYTICS_REBUILD_ENABLED=true
+export STREAMFORGE_ANALYTICS_REBUILD_FROM=2026-06-15T00:00:00Z
+export STREAMFORGE_ANALYTICS_REBUILD_TO=2026-06-16T00:00:00Z
+java -jar backend/api/target/streamforge-api-0.1.0-SNAPSHOT.jar
+```
+
+Resume that run with `STREAMFORGE_ANALYTICS_REBUILD_RUN_ID` and without `FROM` or `TO`. Do not point a rebuild at the preserved development database unless that history should be aggregated. The command does not delete telemetry, outbox rows, or receipts.
 
 Read-only checks:
 

@@ -1,3 +1,4 @@
 org.springframework.boot.EnvironmentPostProcessor=\
 com.streamforge.api.config.DataSourcePasswordEnvironmentPostProcessor,\
-com.streamforge.api.config.ApiKeyEnvironmentPostProcessor
+com.streamforge.api.config.ApiKeyEnvironmentPostProcessor,\
+com.streamforge.api.analytics.RebuildCommandEnvironmentPostProcessor
