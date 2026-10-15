@@ -2,7 +2,7 @@
 
 ## Scope and Status
 
-This is the target architecture approved for progressive implementation after M1. M3 accepts telemetry and writes the outbox row. M4 adds a disabled-by-default publisher in the API, a single-node Kafka broker, and an independent Worker that records one processing receipt. M5 adds single-row claims, fencing, and transient retry. M6 answers analytics questions from accepted telemetry and can rebuild derived hourly statistics. Replay and public deployment remain later work. M6 is pending Final Check and is not a production deployment.
+This is the target architecture approved for progressive implementation after M1. M3 accepts telemetry and writes the outbox row. M4 adds a disabled-by-default publisher in the API, a single-node Kafka broker, and an independent Worker that records one processing receipt. M5 adds single-row claims, fencing, and transient retry. M6 answers analytics questions from accepted telemetry and can rebuild derived hourly statistics. M7 adds a local operations console and a disposable Compose demo. The console shows accepted telemetry, the pending outbox count, and the processing-receipt backlog as separate figures. Replay and public deployment remain M8 work. M7 is pending Final Check and is not a production deployment.
 
 ## Logical Components and Deployment Units
 
@@ -14,7 +14,7 @@ This is the target architecture approved for progressive implementation after M1
 | Telemetry processor | Consume events and insert one idempotent processing receipt | Worker |
 | Read-model updater | Maintain queryable device and telemetry state | API queries `telemetry_events` directly. The derived hour table is rebuilt by an explicit command, not by the Worker. |
 | Contract module | Shared event envelope/types without business coupling | Build-time library, not a process |
-| Demo UI | Read-only visualization and authorized operational surfaces | Frontend |
+| Demo UI | Local device, analytics, and readings console | Frontend container, same-origin proxy to the API |
 | PostgreSQL | Transactional event acceptance, outbox, deduplication, and read state | Database |
 | Kafka | Asynchronous event transport | Broker |
 
@@ -26,7 +26,7 @@ Logical rows in this table are design responsibilities, not microservices. Initi
 backend/api             API process and API-owned modules
 backend/worker          Worker process and worker-owned modules
 backend/shared-contract Minimal versioned event contract definitions
-frontend                Later UI
+frontend                Local operations console
 infra                   Later local and approved deployment configuration
 docs                    Engineering documentation and decisions
 ```

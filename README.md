@@ -2,7 +2,7 @@
 
 StreamForge is a planned cloud-native event processing and analytics platform. Its first MVP domain is IoT telemetry and device monitoring: accepting versioned readings, processing them asynchronously, and exposing useful read models while making reliability behavior observable.
 
-The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M3 accepts nested telemetry into PostgreSQL. M4 publishes pending outbox rows to a local Kafka broker and records one Worker processing receipt. AWS deployment remains unimplemented.
+The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M3 accepts nested telemetry into PostgreSQL. M4 publishes pending outbox rows to a local Kafka broker and records one Worker processing receipt. M7 adds a local operations console and a disposable Compose demo. AWS deployment remains unimplemented.
 
 ## Planned Architecture
 
@@ -12,7 +12,7 @@ StreamForge will use a modular repository with two independent Java processes:
 - **Worker:** consumes Kafka events, applies idempotent business effects, and updates PostgreSQL-backed read state.
 - **PostgreSQL:** primary transactional store, including the planned outbox and processed-event records.
 - **Apache Kafka:** asynchronous event transport; a single-node KRaft setup is planned initially for local development.
-- **Frontend:** a later read-oriented demo and operational UI.
+- **Frontend:** a local operations console in `frontend/`. It reads the API through a same-origin proxy.
 - **Infrastructure:** local and deployment configuration added only in the milestones that need it.
 
 Logical modules do not imply separate deployments. The API and Worker are the only planned application deployment units initially. See [Architecture](docs/architecture.md).
@@ -20,7 +20,7 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 ## Implemented now
 
 - Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`, `backend/worker`, and `backend/simulator`
-- JDBC, Flyway V1–V4, and local PostgreSQL 17.11 through Docker Compose
+- JDBC, Flyway V1–V5, and local PostgreSQL 17.11 through Docker Compose
 - Device registration and nested `telemetry.reading` acceptance
 - Atomic event and outbox insertion, with idempotent retries
 - An outbox publisher in the API, off unless `OUTBOX_PUBLISHER_ENABLED=true`, claiming one row at a time
@@ -32,13 +32,15 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 - JUnit and Testcontainers tests, including PostgreSQL and Kafka
 - Device-admin analytics for summary, UTC hour and day series, and keyset reading history
 - An explicit, default-off rebuild of derived hourly statistics from accepted telemetry
-- A GitHub Actions workflow. The owner reported that M2 and M3 runs passed. This repository's agent did not independently verify those remote runs or the remote M4 or M5 runs. Remote M6 CI is not verified.
+- A React 19 operations console for devices, accepted-telemetry analytics, and historical readings
+- Multi-stage images and `infra/compose.demo.yaml`, a disposable project that does not use the preserved development volumes
+- GitHub Actions workflows for the backend, the frontend, and the disposable demo. Remote M7 CI is not verified until the owner pushes and the jobs finish.
 
-## Planned for later milestones
+## Planned for M8
 
-- Dead-letter replay and a longer reliability soak
-- A frontend stack, with Node.js 24 LTS to be evaluated before that work
-- AWS deployment, only after M9 review and explicit approval
+M8 is Cloud Deployment & Final Project Delivery. It owns approved AWS deployment, public-exposure security, cloud observability, final performance testing, final documentation, and portfolio delivery. Public identity is not part of M7.
+
+Dead-letter replay and a longer reliability soak remain open.
 
 ## Status
 
@@ -52,7 +54,9 @@ Logical modules do not imply separate deployments. The API and Worker are the on
 
 **M5 — Data Correctness & Reliability was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
 
-**M6 — Storage, Analytics & Historical Processing is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M6 is not verified.
+**M6 — Storage, Analytics & Historical Processing was accepted by the owner on 2026-10-15.** This agent did not independently re-check the remote GitHub Actions run after the isolation fix.
+
+**M7 — Full-Stack Product & Delivery is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M7 is not verified. M8 has not started.
 
 ## Planned Repository Layout
 
@@ -64,7 +68,7 @@ backend/
   simulator/           # Manual HTTP telemetry CLI
   worker/              # Independent Kafka consumer
   shared-contract/     # deferred until a later milestone
-frontend/              # demo and operational UI
+frontend/              # local operations console
 infra/                 # local PostgreSQL and Kafka Compose
 docs/                  # requirements, architecture, decisions, and records
 ```
@@ -83,6 +87,9 @@ docs/                  # requirements, architecture, decisions, and records
 - [M3 Milestone Report](docs/milestones/M3.md)
 - [M4 Milestone Report](docs/milestones/M4.md)
 - [M5 Milestone Report](docs/milestones/M5.md)
+- [M6 Milestone Report](docs/milestones/M6.md)
+- [M7 Milestone Report](docs/milestones/M7.md)
+- [ADR-13](docs/decisions/ADR-13.md)
 
 ## Local Development
 

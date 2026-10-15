@@ -84,7 +84,7 @@ No numeric availability, latency, throughput, retention, recovery-time, or recov
 
 - Local development shall not require AWS.
 - AWS is a final deployment goal, not an M1 deliverable.
-- EC2 plus Docker Compose is only a preferred candidate until M9 evaluates cost, security, operability, and host resources.
+- EC2 plus Docker Compose is only a preferred candidate until M8 evaluates cost, security, operability, and host resources.
 
 ## Primary User Journeys
 
@@ -130,7 +130,7 @@ No numeric availability, latency, throughput, retention, recovery-time, or recov
 - Multi-node production Kafka in the initial local foundation.
 - End-to-end exactly-once claims.
 - Public write or administrative access.
-- AWS deployment before M9 evaluation and explicit approval.
+- AWS deployment before M8 evaluation and explicit approval.
 - Business functionality, source modules, dependencies, infrastructure, or deployment in M1.
 
 ## Acceptance Principles

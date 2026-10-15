@@ -10,8 +10,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,18 +28,30 @@ import java.util.UUID;
 public final class TelemetrySimulator {
 
     public static final int MAX_COUNT = 100;
+    public static final Duration LIVE_LOOKBACK = Duration.ofHours(6);
     static final String KEY_VARIABLE = "INGESTION_API_KEY";
 
     private final HttpClient httpClient;
     private final Map<String, String> environment;
     private final PrintStream out;
     private final PrintStream err;
+    private final Clock clock;
 
     public TelemetrySimulator(HttpClient httpClient, Map<String, String> environment, PrintStream out, PrintStream err) {
+        this(httpClient, environment, out, err, Clock.systemUTC());
+    }
+
+    TelemetrySimulator(
+            HttpClient httpClient,
+            Map<String, String> environment,
+            PrintStream out,
+            PrintStream err,
+            Clock clock) {
         this.httpClient = httpClient;
         this.environment = environment;
         this.out = out;
         this.err = err;
+        this.clock = clock;
     }
 
     public static void main(String[] args) {
@@ -53,13 +67,13 @@ public final class TelemetrySimulator {
             return 0;
         }
         try {
-            Options options = Options.parse(args);
+            Options options = Options.parse(args, clock);
             String apiKey = environment.get(KEY_VARIABLE);
             if (apiKey == null || apiKey.isBlank()) {
                 err.println(KEY_VARIABLE + " must be set in the environment.");
                 return 2;
             }
-            List<String> bodies = options.bodies();
+            List<String> bodies = options.bodies(clock);
             boolean duplicateAccepted = false;
             for (int index = 0; index < bodies.size(); index++) {
                 if (index > 0 && options.intervalMillis > 0) {
@@ -107,12 +121,28 @@ public final class TelemetrySimulator {
 
     static String usage() {
         return """
-                Usage: TelemetrySimulator --base-url http://127.0.0.1:8080 --device-id sensor-042 --seed 1 --count 3 [--interval-ms 0] [--mode valid]
+                Usage: TelemetrySimulator --base-url http://127.0.0.1:8080 --device-id sensor-042 --seed 1 --count 3 [--interval-ms 0] [--mode valid] [--clock now]
                 Modes: valid, duplicate, conflict, invalid-flat, invalid-future
                 The device must already exist. Read INGESTION_API_KEY from the environment. Count must be 1..100.
                 The same seed repeats the same events. HTTP 202 is newly accepted and HTTP 200 is already accepted.
                 valid and duplicate succeed on those acceptance responses. conflict requires HTTP 409 for the changed submission.
+                --clock now is valid mode only. Every occurredAt falls in the previous six UTC hours and ends at the current second.
+                Repeating a seed after the clock moves can change occurredAt and return HTTP 409. Use a new seed for each live run.
+                --allow-service-host true permits only http://api:<port> on the disposable Compose network. URLs with embedded credentials are rejected.
                 """;
+    }
+
+    /**
+     * Spreads {@code count} readings across the six hours ending at {@code anchor}.
+     * The last reading is the anchor truncated to a UTC second. No reading is later than that instant.
+     */
+    static Instant liveOccurredAt(Instant anchor, int index, int count) {
+        Instant end = anchor.truncatedTo(ChronoUnit.SECONDS);
+        if (count <= 1 || index >= count - 1) {
+            return end;
+        }
+        long elapsed = LIVE_LOOKBACK.toSeconds() * index / (count - 1L);
+        return end.minus(LIVE_LOOKBACK).plusSeconds(elapsed);
     }
 
     static UUID eventId(long seed, int index) {
@@ -124,6 +154,19 @@ public final class TelemetrySimulator {
     }
 
     static String eventBody(long seed, int index, String deviceId, String mode, boolean conflictVariant) {
+        return eventBody(seed, index, deviceId, mode, conflictVariant, null);
+    }
+
+    /**
+     * Live readings end at {@code occurredAt} and never after it. A null timestamp keeps the fixed demo clock.
+     */
+    static String eventBody(
+            long seed,
+            int index,
+            String deviceId,
+            String mode,
+            boolean conflictVariant,
+            Instant occurredAt) {
         if ("invalid-flat".equals(mode)) {
             return "{"
                     + "\"eventId\":\"" + eventId(seed, index) + "\","
@@ -137,7 +180,9 @@ public final class TelemetrySimulator {
                     + "}";
         }
         Measurement measurement = measurement(seed, index, conflictVariant);
-        String occurredAt = "invalid-future".equals(mode)
+        String timestamp = occurredAt != null
+                ? occurredAt.toString()
+                : "invalid-future".equals(mode)
                 ? "2099-01-01T00:00:00Z"
                 : Instant.parse("2026-01-01T00:00:00Z").plusSeconds(index).toString();
         return "{"
@@ -145,7 +190,7 @@ public final class TelemetrySimulator {
                 + "\"deviceId\":\"" + deviceId + "\","
                 + "\"eventType\":\"telemetry.reading\","
                 + "\"schemaVersion\":1,"
-                + "\"occurredAt\":\"" + occurredAt + "\","
+                + "\"occurredAt\":\"" + timestamp + "\","
                 + "\"measurements\":{"
                 + "\"temperatureC\":" + measurement.temperature.toPlainString() + ","
                 + "\"humidityPct\":" + measurement.humidity.toPlainString() + ","
@@ -349,6 +394,24 @@ public final class TelemetrySimulator {
         return value == null || value.isBlank();
     }
 
+    static void requireBaseUrl(String baseUrl, boolean allowServiceHost) {
+        java.net.URI uri;
+        try {
+            uri = java.net.URI.create(baseUrl);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("base-url must target loopback.");
+        }
+        if (uri.getUserInfo() != null || uri.getRawUserInfo() != null) {
+            throw new IllegalArgumentException("base-url must target loopback.");
+        }
+        String host = uri.getHost();
+        boolean loopback = "127.0.0.1".equals(host) || "localhost".equals(host);
+        boolean demoService = allowServiceHost && "api".equals(host);
+        if (!"http".equals(uri.getScheme()) || (!loopback && !demoService)) {
+            throw new IllegalArgumentException("base-url must target loopback.");
+        }
+    }
+
     static final class Options {
         final String baseUrl;
         final String deviceId;
@@ -356,17 +419,26 @@ public final class TelemetrySimulator {
         final int count;
         final long intervalMillis;
         final String mode;
+        final boolean liveClock;
 
-        private Options(String baseUrl, String deviceId, long seed, int count, long intervalMillis, String mode) {
+        private Options(
+                String baseUrl,
+                String deviceId,
+                long seed,
+                int count,
+                long intervalMillis,
+                String mode,
+                boolean liveClock) {
             this.baseUrl = baseUrl;
             this.deviceId = deviceId;
             this.seed = seed;
             this.count = count;
             this.intervalMillis = intervalMillis;
             this.mode = mode;
+            this.liveClock = liveClock;
         }
 
-        static Options parse(String[] args) {
+        static Options parse(String[] args, Clock clock) {
             Map<String, String> values = new LinkedHashMap<>();
             for (int i = 0; i < args.length; i++) {
                 String arg = args[i];
@@ -378,10 +450,25 @@ public final class TelemetrySimulator {
                 }
                 values.put(arg, args[++i]);
             }
-            String baseUrl = required(values, "--base-url");
-            if (!baseUrl.startsWith("http://127.0.0.1") && !baseUrl.startsWith("http://localhost")) {
-                throw new IllegalArgumentException("base-url must target loopback.");
+            for (String name : values.keySet()) {
+                if (!List.of(
+                        "--base-url",
+                        "--device-id",
+                        "--seed",
+                        "--count",
+                        "--interval-ms",
+                        "--mode",
+                        "--clock",
+                        "--allow-service-host").contains(name)) {
+                    throw new IllegalArgumentException("Unexpected argument.");
+                }
             }
+            boolean allowServiceHost = "true".equals(values.get("--allow-service-host"));
+            if (values.containsKey("--allow-service-host") && !allowServiceHost) {
+                throw new IllegalArgumentException("--allow-service-host must be true.");
+            }
+            String baseUrl = required(values, "--base-url");
+            TelemetrySimulator.requireBaseUrl(baseUrl, allowServiceHost);
             String deviceId = required(values, "--device-id");
             if (!deviceId.matches("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")) {
                 throw new IllegalArgumentException("device-id format is invalid.");
@@ -402,15 +489,31 @@ public final class TelemetrySimulator {
             if (("invalid-flat".equals(mode) || "invalid-future".equals(mode)) && count != 1) {
                 throw new IllegalArgumentException("invalid modes send exactly one event.");
             }
-            return new Options(stripTrailingSlash(baseUrl), deviceId, seed, count, interval, mode);
+            String clockValue = values.get("--clock");
+            boolean liveClock = false;
+            if (clockValue != null) {
+                if (!"now".equals(clockValue)) {
+                    throw new IllegalArgumentException("--clock must be now.");
+                }
+                if (!"valid".equals(mode)) {
+                    throw new IllegalArgumentException("--clock now is only supported with mode valid.");
+                }
+                liveClock = true;
+            }
+            if (clock == null) {
+                throw new IllegalArgumentException("clock is required.");
+            }
+            return new Options(stripTrailingSlash(baseUrl), deviceId, seed, count, interval, mode, liveClock);
         }
 
-        List<String> bodies() {
+        List<String> bodies(Clock clock) {
+            Instant anchor = liveClock ? clock.instant() : null;
             List<String> bodies = new ArrayList<>();
             for (int index = 0; index < count; index++) {
                 boolean conflictVariant = "conflict".equals(mode) && index > 0;
                 int sourceIndex = "duplicate".equals(mode) || "conflict".equals(mode) ? 0 : index;
-                bodies.add(eventBody(seed, sourceIndex, deviceId, mode, conflictVariant));
+                Instant occurredAt = anchor == null ? null : liveOccurredAt(anchor, sourceIndex, count);
+                bodies.add(eventBody(seed, sourceIndex, deviceId, mode, conflictVariant, occurredAt));
             }
             return bodies;
         }

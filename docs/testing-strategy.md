@@ -33,9 +33,11 @@ The MVC slice keeps security filters off so it can reach the test probes. The fu
 Not executed:
 
 - A process kill of a live publisher, dead-letter replay, and a long soak. Claim expiry is tested by moving `claimed_until` backward. Broker recovery after a timeout is covered by the outage tests. A 200-event two-publisher soak is not part of CI.
-- Remote GitHub Actions for M6
+- Remote GitHub Actions for M7
 
-The owner reported that the M2 and M3 GitHub Actions runs passed. This agent did not independently verify them or the remote M4 or M5 runs. Remote GitHub Actions for M6 is **NOT VERIFIED** until the user pushes this milestone.
+Frontend unit tests use Vitest and React Testing Library with mocked `fetch`. They are not end-to-end tests. Playwright in `frontend/e2e` runs against the disposable Compose project: nginx, the API, PostgreSQL, Kafka, the Worker, and the simulator. It does not mock analytics. Traces, video, and screenshots are off.
+
+The owner accepted M6. Remote GitHub Actions for M7 is **NOT VERIFIED** until the user pushes this milestone.
 
 ## Testing Principles
 

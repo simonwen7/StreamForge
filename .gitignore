@@ -19,6 +19,9 @@ hs_err_pid*
 node_modules/
 dist/
 coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
 
 # Python (deferred, but keep local artifacts out)
 __pycache__/

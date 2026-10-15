@@ -1,0 +1,139 @@
+name: Demo CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - backend/**
+      - frontend/**
+      - infra/**
+      - pom.xml
+      - mvnw
+      - .mvn/**
+      - .github/workflows/demo-ci.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Disposable demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEMO_COMPOSE_PROJECT: streamforge-m7ci-${{ github.run_id }}
+      DEMO_ENV_FILE: ${{ runner.temp }}/demo.env
+      DEMO_WEB_PORT: "4173"
+      DEMO_API_PORT: "18080"
+      E2E_BASE_URL: http://127.0.0.1:4173
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create ephemeral credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import os
+          import secrets
+          admin = secrets.token_urlsafe(32)
+          ingest = secrets.token_urlsafe(32)
+          password = secrets.token_urlsafe(24)
+          path = os.environ["DEMO_ENV_FILE"]
+          with open(path, "w", encoding="utf-8") as handle:
+              handle.write("POSTGRES_USER=streamforge\n")
+              handle.write("POSTGRES_PASSWORD=" + password + "\n")
+              handle.write("POSTGRES_DB=streamforge\n")
+              handle.write("DEVICE_ADMIN_API_KEY=" + admin + "\n")
+              handle.write("INGESTION_API_KEY=" + ingest + "\n")
+              handle.write("DEMO_WEB_PORT=4173\n")
+              handle.write("DEMO_API_PORT=18080\n")
+          print("::add-mask::" + admin)
+          print("::add-mask::" + ingest)
+          print("::add-mask::" + password)
+          PY
+      - name: Build images
+        run: docker compose -p "$DEMO_COMPOSE_PROJECT" -f infra/compose.demo.yaml --env-file "$DEMO_ENV_FILE" build
+      - name: Start disposable stack
+        run: |
+          set -euo pipefail
+          set -a
+          source "$DEMO_ENV_FILE"
+          set +a
+          docker compose -p "$DEMO_COMPOSE_PROJECT" -f infra/compose.demo.yaml --env-file "$DEMO_ENV_FILE" up -d
+      - name: Wait for web
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            if curl -fsS "$E2E_BASE_URL/actuator/health" | grep -q '"status":"UP"'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Demo web did not become ready."
+          exit 1
+      - name: Check host bindings
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          project = os.environ["DEMO_COMPOSE_PROJECT"]
+          ids = subprocess.check_output(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"], text=True).split()
+          found = {"postgres": False, "kafka": False, "web": False, "api": False}
+          for container in ids:
+              service = subprocess.check_output(["docker", "inspect", "--format", '{{index .Config.Labels "com.docker.compose.service"}}', container], text=True).strip()
+              bindings = json.loads(subprocess.check_output(["docker", "inspect", "--format", "{{json .HostConfig.PortBindings}}", container], text=True).strip() or "null")
+              if service == "postgres":
+                  found["postgres"] = True
+                  if bindings:
+                      sys.exit("PostgreSQL published a host port")
+              elif service == "kafka":
+                  found["kafka"] = True
+                  if bindings:
+                      sys.exit("Kafka published a host port")
+              elif service in ("web", "api"):
+                  found[service] = True
+                  host = (bindings or {}).get("8080/tcp", [{}])[0].get("HostIp")
+                  if host != "127.0.0.1":
+                      sys.exit(service + " is not loopback-only")
+          if not all(found.values()):
+              sys.exit("Expected demo services were not found")
+          PY
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Browser tests
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          set -a
+          source "$DEMO_ENV_FILE"
+          set +a
+          export E2E_ADMIN_KEY="$DEVICE_ADMIN_API_KEY"
+          export E2E_INGESTION_KEY="$INGESTION_API_KEY"
+          export DEMO_REPO_ROOT="$GITHUB_WORKSPACE"
+          npm run e2e
+      - name: Sanitized diagnostics
+        if: failure()
+        run: |
+          set +e
+          docker compose -p "$DEMO_COMPOSE_PROJECT" -f infra/compose.demo.yaml --env-file "$DEMO_ENV_FILE" logs --no-color \
+            | sed -E 's/Bearer [^[:space:]]+/Bearer [redacted]/g' > "$RUNNER_TEMP/demo-logs.txt"
+          echo "Sanitized logs: $RUNNER_TEMP/demo-logs.txt"
+      - name: Remove disposable stack
+        if: always()
+        run: docker compose -p "$DEMO_COMPOSE_PROJECT" -f infra/compose.demo.yaml --env-file "$DEMO_ENV_FILE" down -v --remove-orphans
