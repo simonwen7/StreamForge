@@ -215,7 +215,9 @@ npm ci
 npm run dev
 ```
 
-`npm run dev` listens on `127.0.0.1:5173` and proxies `/api` and `/actuator` to `http://127.0.0.1:8080`. Start the preserved API with the publisher off before using that proxy. The admin key is typed into the page. Do not put it in a Vite variable.
+`npm run dev` listens on `127.0.0.1:5173` and proxies `/api` and `/actuator` to `http://127.0.0.1:8080`. It builds the live operations console. Start the preserved API with the publisher off before using that proxy. The admin key is typed into the page. Do not put it in a Vite variable.
+
+`npm run dev:showcase` is the public simulation, on the same port, with no API proxy.
 
 Other frontend commands:
 
@@ -224,8 +226,14 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run check:public-bundle
+npm run build:live
+npm run check:live-bundle
+npm run e2e:showcase
 npm run e2e
 ```
+
+`npm run build` is the static showcase. `npm run build:live` is the console used by `frontend/Dockerfile`. `npm run e2e` still expects the disposable Compose stack. `npm run e2e:showcase` does not.
 
 `npm run e2e` is Playwright against the disposable demo, not against the Vite dev server. It requires `E2E_BASE_URL`, `E2E_ADMIN_KEY`, and `E2E_INGESTION_KEY`. It refuses ports 8080, 5173, 5432, and 9094.
 

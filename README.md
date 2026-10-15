@@ -1,116 +1,116 @@
 # StreamForge
 
-StreamForge is a planned cloud-native event processing and analytics platform. Its first MVP domain is IoT telemetry and device monitoring: accepting versioned readings, processing them asynchronously, and exposing useful read models while making reliability behavior observable.
+StreamForge accepts device telemetry, stores it durably, and shows what happens when Kafka or the worker fails. The interesting part is the split between an accepted PostgreSQL row and the later Kafka publication and worker receipt.
 
-The project is intended to demonstrate practical event-driven engineering: explicit contracts, transactional boundaries, at-least-once delivery, idempotent business effects, operational failure handling, and a measured path to AWS. M3 accepts nested telemetry into PostgreSQL. M4 publishes pending outbox rows to a local Kafka broker and records one Worker processing receipt. M7 adds a local operations console and a disposable Compose demo. AWS deployment remains unimplemented.
+An interviewer can open the public site and operate that pipeline in the browser. The Java API, PostgreSQL, Kafka, and worker remain in this repository and run locally with Docker. The website is a browser-local simulation of those behaviors. It is not a remote Kafka cluster, and this project does not deploy AWS infrastructure.
 
-## Planned Architecture
+## Public site
 
-StreamForge will use a modular repository with two independent Java processes:
+The static site is intended for Vercel Hobby, with no server, database, or API key. The default project URL is assigned at deploy time. It is not recorded here until that deployment has been verified.
 
-- **Backend API:** validates and durably accepts telemetry, serves read APIs, and authorizes protected operations.
-- **Worker:** consumes Kafka events, applies idempotent business effects, and updates PostgreSQL-backed read state.
-- **PostgreSQL:** primary transactional store, including the planned outbox and processed-event records.
-- **Apache Kafka:** asynchronous event transport; a single-node KRaft setup is planned initially for local development.
-- **Frontend:** a local operations console in `frontend/`. It reads the API through a same-origin proxy.
-- **Infrastructure:** local and deployment configuration added only in the milestones that need it.
+Refresh returns the simulation to a fixed UTC anchor, `2026-06-15T12:00:00Z`, plus elapsed simulation time. Moving between Pipeline, Analytics, and Architecture keeps the current run. Nothing is written to `localStorage`.
 
-Logical modules do not imply separate deployments. The API and Worker are the only planned application deployment units initially. See [Architecture](docs/architecture.md).
+## What the Java system does
 
-## Implemented now
+- A device reading and its outbox row commit in one PostgreSQL transaction.
+- The same event id with the same payload is an idempotent retry. A different payload for that id is a conflict.
+- The publisher claims one pending outbox row at a time, with a lease token so a stale publisher cannot finish the update.
+- Kafka delivery is at-least-once. A crash after the broker acknowledgement can publish the record again.
+- The worker writes one processing receipt per event id and acknowledges the Kafka record after that commit.
+- A mismatched payload is poison. It is dead-lettered, and the source is acknowledged only after that dead-letter send succeeds.
+- Analytics read `telemetry_events`. They do not wait for a receipt. UTC hour and day buckets can change when a late `occurredAt` arrives.
+- The hourly rebuild is an explicit command and is off unless enabled.
 
-- Java 21, Maven Wrapper, and Spring Boot 4.1.1 in `backend/api`, `backend/worker`, and `backend/simulator`
-- JDBC, Flyway V1–V5, and local PostgreSQL 17.11 through Docker Compose
-- Device registration and nested `telemetry.reading` acceptance
-- Atomic event and outbox insertion, with idempotent retries
-- An outbox publisher in the API, off unless `OUTBOX_PUBLISHER_ENABLED=true`, claiming one row at a time
-- Apache Kafka 4.2.1, single-node KRaft, loopback host port `127.0.0.1:9094`
-- An independent Worker that writes `streamforge.processed_events` and acknowledges Kafka only after commit
-- Two loopback API keys for device administration and ingestion
-- A manual Java CLI simulator in `backend/simulator`. Repeating a seed is successful: HTTP 202 is a new acceptance and HTTP 200 is the same event already accepted
-- Actuator health, request validation, and RFC 9457 error responses
-- JUnit and Testcontainers tests, including PostgreSQL and Kafka
-- Device-admin analytics for summary, UTC hour and day series, and keyset reading history
-- An explicit, default-off rebuild of derived hourly statistics from accepted telemetry
-- A React 19 operations console for devices, accepted-telemetry analytics, and historical readings
-- Multi-stage images and `infra/compose.demo.yaml`, a disposable project that does not use the preserved development volumes
-- GitHub Actions workflows for the backend, the frontend, and the disposable demo. Remote M7 CI is not verified until the owner pushes and the jobs finish.
+The local broker is one Kafka 4.2.1 node, replication factor 1, one partition. That is not a highly available deployment.
 
-## Planned for M8
+## Stack
 
-M8 is Cloud Deployment & Final Project Delivery. It owns approved AWS deployment, public-exposure security, cloud observability, final performance testing, final documentation, and portfolio delivery. Public identity is not part of M7.
+Java 21, Spring Boot 4.1.1, Spring JDBC, Spring Kafka, PostgreSQL 17, Kafka 4.2.1, Flyway V1–V5, React 19, TypeScript, Vite, Docker Compose, GitHub Actions.
 
-Dead-letter replay and a longer reliability soak remain open.
+## Screenshots
 
-## Status
+Browser-local simulation:
 
-**M1 completed and accepted on 2026-10-14 with documented deferrals.**
+![Pipeline](docs/portfolio/screenshots/pipeline.png)
 
-**M2 — Java Backend Foundation was accepted by the owner on 2026-10-14.** Local tests passed. The owner reported that remote GitHub Actions passed. This repository's agent did not independently verify that remote run.
+![Tablet pipeline](docs/portfolio/screenshots/tablet-pipeline.png)
 
-**M3 — Event Sources & Ingestion was accepted by the owner.** The local M3 recheck passed. The owner reported that GitHub Actions passed. This agent did not independently verify that remote run.
+![Mobile pipeline](docs/portfolio/screenshots/mobile-pipeline.png)
 
-**M4 — Asynchronous Event Processing was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
+![Broker paused](docs/portfolio/screenshots/broker-paused.png)
 
-**M5 — Data Correctness & Reliability was accepted by the owner.** This agent did not independently verify the remote GitHub Actions run.
+![Analytics](docs/portfolio/screenshots/analytics.png)
 
-**M6 — Storage, Analytics & Historical Processing was accepted by the owner on 2026-10-15.** This agent did not independently re-check the remote GitHub Actions run after the isolation fix.
+The local Docker console is separate and still requires the device-admin key. A screenshot of that console is included when one was captured without secrets: [local console](docs/portfolio/screenshots/live-console.png).
 
-**M7 — Full-Stack Product & Delivery is implemented locally and is pending Final Check / user acceptance.** Remote GitHub Actions for M7 is not verified. M8 has not started.
+## Run the simulation locally
 
-## Planned Repository Layout
-
-M2 introduced `backend/api` and `infra`. Later directories are created only when they contain real deliverables:
-
-```text
-backend/
-  api/                 # Spring Boot API process
-  simulator/           # Manual HTTP telemetry CLI
-  worker/              # Independent Kafka consumer
-  shared-contract/     # deferred until a later milestone
-frontend/              # local operations console
-infra/                 # local PostgreSQL and Kafka Compose
-docs/                  # requirements, architecture, decisions, and records
+```bash
+cd frontend
+npm ci
+npm run dev:showcase
 ```
 
-## Documentation
+Open `http://127.0.0.1:5173`. `npm run build` is the public static build. It does not call the API.
 
-- [Requirements](docs/requirements.md)
-- [Architecture](docs/architecture.md)
-- [Event Contract](docs/event-contract.md)
-- [Development](docs/development.md)
-- [Testing Strategy](docs/testing-strategy.md)
-- [Known Issues and Risks](docs/known-issues.md)
-- [Architecture Decision Records](docs/decisions/ADR-01.md)
-- [M1 Milestone Report](docs/milestones/M1.md)
-- [M2 Milestone Report](docs/milestones/M2.md)
-- [M3 Milestone Report](docs/milestones/M3.md)
-- [M4 Milestone Report](docs/milestones/M4.md)
-- [M5 Milestone Report](docs/milestones/M5.md)
-- [M6 Milestone Report](docs/milestones/M6.md)
-- [M7 Milestone Report](docs/milestones/M7.md)
-- [ADR-13](docs/decisions/ADR-13.md)
+## Run the real stack
 
-## Local Development
+Use a disposable Compose project. Do not point `docker compose down -v` at the preserved `streamforge` volumes.
 
 ```bash
 export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 ./mvnw -B -ntp verify
-cp infra/.env.example infra/.env
-docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres kafka
-set -a && source infra/.env && set +a
-export OUTBOX_PUBLISHER_ENABLED=false
-./mvnw -pl backend/api spring-boot:run
 ```
 
-Leave the publisher disabled against the preserved development database. That database still has pending M3 events, and enabling the publisher sends them. Start the Worker only after Flyway has applied V3:
+The preserved development database still has unpublished outbox rows. Leave `OUTBOX_PUBLISHER_ENABLED` false for that database. The disposable demo enables the publisher only on its own empty database. See [Development](docs/development.md).
 
 ```bash
-export KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094
-./mvnw -pl backend/worker spring-boot:run
+docker compose -p streamforge-m7demo -f infra/compose.demo.yaml --env-file infra/.env.demo up -d --build
 ```
 
-## Safety and Delivery Boundaries
+The live image is built with `npm run build:live`. Routes stay `/devices`, `/devices/:deviceId`, and `/devices/:deviceId/readings`. The key is typed into the page and kept in memory.
 
-Kafka and PostgreSQL must remain private. Public demo access, if provided, is read-only; write, replay, failure-injection, and control operations require server-side authorization. No deployment may occur without explicit approval.
+## Tests
 
+```bash
+./mvnw -B -ntp verify
+cd frontend && npm run typecheck && npm run lint && npm test
+cd frontend && npm run build && npm run check:public-bundle
+cd frontend && npm run build:live && npm run check:live-bundle
+cd frontend && npm run e2e:showcase
+cd frontend && npm run e2e
+```
+
+`npm run e2e` is the existing Docker Playwright suite and needs the disposable stack. `npm run e2e:showcase` builds the public site and drives it with Playwright. It does not start Kafka.
+
+GitHub Actions workflows: [backend](.github/workflows/backend-ci.yml), [frontend](.github/workflows/frontend-ci.yml), [demo](.github/workflows/demo-ci.yml). Remote results exist only after the owner pushes.
+
+## Architecture
+
+- [Real telemetry flow](docs/diagrams/telemetry-flow.md)
+- [Outbox and worker](docs/diagrams/outbox-worker.md)
+- [Analytics and rebuild](docs/diagrams/analytics.md)
+- [Docker demo](docs/diagrams/docker-demo.md)
+- [Simulation versus the Java stack](docs/diagrams/simulation-versus-backend.md)
+- [Interview script and resume notes](docs/portfolio/README.md)
+
+## Limits
+
+- The public site simulates the pipeline. Counters on that site are not measured throughput.
+- The demo broker is a single node.
+- Publication is at-least-once, not exactly-once.
+- The local console is not a public identity system.
+- There is no AWS deployment.
+
+## Repository
+
+```text
+backend/api          Spring Boot API, outbox publisher, analytics
+backend/worker       Kafka consumer, receipts, dead letters
+backend/simulator    HTTP telemetry CLI
+frontend             Public simulation and the live operations console
+infra                Local and disposable Compose
+docs                 Decisions, milestones, diagrams, portfolio notes
+```
+
+Historical milestone notes stay in `docs/milestones/`. M1–M7 are owner-accepted. M8 is implemented locally and pending final acceptance.

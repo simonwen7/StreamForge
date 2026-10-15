@@ -19,7 +19,7 @@ jobs:
   verify:
     name: Frontend checks
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -40,7 +40,17 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: Production build
+      - name: Public production build
         run: npm run build
+      - name: Public bundle isolation
+        run: npm run check:public-bundle
+      - name: Live production build
+        run: npm run build:live
+      - name: Live bundle check
+        run: npm run check:live-bundle
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Public showcase browser tests
+        run: npm run e2e:showcase
       - name: Audit
         run: npm audit --audit-level=high
